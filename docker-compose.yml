@@ -1,0 +1,11 @@
+# Dev local (design §6). Production deploy qua AgentBase Runtime (Flow 7).
+services:
+  hub:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      DATABASE_URL: sqlite:////app/data/hub.db
+    volumes:
+      - ./data:/app/data

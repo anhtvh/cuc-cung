@@ -1,0 +1,27 @@
+# Secrets & credentials — KHÔNG bao giờ commit
+.env
+.greennode.json
+.agentbase/
+
+# Data & state
+data/
+*.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# IDE
+.idea/
+.vscode/
+
+# Claude Code project settings (có thể chứa token trong allowed commands)
+.claude/
+
+# Binary / không cần thiết
+*.docx
+*.pdf

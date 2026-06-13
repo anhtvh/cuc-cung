@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent Hub — AI agent cho doanh nghiệp</title>
+  <link rel="stylesheet" href="style.css?v=20260613b">
+</head>
+<body>
+
+<!-- ─── Header ─────────────────────────────────────────── -->
+<header>
+  <div class="brand">
+    <div class="brand-icon">🏭</div>
+    <span class="brand-text">Agent Hub</span>
+    <span class="brand-sub">/ AI platform</span>
+  </div>
+  <nav>
+    <button class="tab active" data-tab="home">Trang chủ</button>
+    <button class="tab" data-tab="chat">Chat</button>
+    <button class="tab" data-tab="catalog">Catalog</button>
+    <button class="tab" data-tab="review" id="review-tab" hidden>Review</button>
+    <button class="tab" data-tab="stats" id="stats-tab" hidden>Stats</button>
+  </nav>
+  <div class="user-pill">
+    <div class="user-avatar" id="user-avatar">A</div>
+    <select id="user-switcher">
+      <option value="an.nguyen">An · Pháp chế</option>
+      <option value="binh.tran">Bình · Sales</option>
+      <option value="admin">Admin · Checker</option>
+    </select>
+  </div>
+</header>
+
+<main>
+
+  <!-- ─── HOME ────────────────────────────────────────── -->
+  <section id="panel-home" class="panel active">
+
+    <div class="home-hero">
+      <div class="hero-badge">✦ Claw-a-thon 2026</div>
+      <h1>AI agent chuyên biệt<br>cho mọi <em>nghiệp vụ</em></h1>
+      <p>Chỉ cần mô tả nhu cầu bằng lời — hệ thống tự tìm đúng người giỏi nhất giúp bạn. Hoặc tạo hẳn một agent riêng, chỉ qua trò chuyện thôi.</p>
+      <div class="hero-actions">
+        <button class="btn-cta" onclick="switchTab('chat')">Bắt đầu chat →</button>
+        <button class="btn-ghost" onclick="switchTab('catalog')">Xem catalog</button>
+      </div>
+    </div>
+
+    <div class="home-section">
+      <div class="section-label">Tính năng</div>
+      <div class="section-title">Mọi thứ bạn cần trong một nền tảng</div>
+      <div class="section-sub">Từ routing thông minh đến governance đầy đủ</div>
+      <div class="feat-grid">
+        <div class="feat-card">
+          <div class="feat-icon blue">🎯</div>
+          <div class="feat-title">Tự động điều phối</div>
+          <div class="feat-desc">Bạn chỉ cần nói nhu cầu — hệ thống tự hiểu và kết nối với agent phù hợp nhất, không cần biết tên agent.</div>
+        </div>
+        <div class="feat-card">
+          <div class="feat-icon purple">📄</div>
+          <div class="feat-title">Đính kèm tài liệu</div>
+          <div class="feat-desc">Gửi PDF, DOCX, TXT hay ảnh scan trực tiếp vào chat. Agent đọc và xử lý ngay trong hội thoại.</div>
+        </div>
+        <div class="feat-card">
+          <div class="feat-icon green">✨</div>
+          <div class="feat-title">Tạo & chia sẻ agent</div>
+          <div class="feat-desc">Chat với Master để tạo agent riêng. Khi ưng ý, submit một cái là cả team dùng được — không cần code.</div>
+        </div>
+        <div class="feat-card">
+          <div class="feat-icon yellow">✅</div>
+          <div class="feat-title">Duyệt trước khi dùng</div>
+          <div class="feat-desc">Mọi agent mới đều qua admin review trước khi được chia sẻ. Đảm bảo chất lượng, không lo rủi ro.</div>
+        </div>
+        <div class="feat-card">
+          <div class="feat-icon cyan">💬</div>
+          <div class="feat-title">Nhớ ngữ cảnh</div>
+          <div class="feat-desc">Mỗi agent nhớ lịch sử trò chuyện của bạn — không cần giải thích lại từ đầu mỗi lần.</div>
+        </div>
+        <div class="feat-card">
+          <div class="feat-icon red">🔌</div>
+          <div class="feat-title">Kết nối dữ liệu thật</div>
+          <div class="feat-desc">Agent tra cứu hợp đồng, tài liệu nội bộ qua connector thật — không phải trả lời đoán mò.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick-create banner -->
+    <div class="qc-banner">
+      <div class="qc-banner-inner">
+        <div class="qc-banner-text">
+          <h3>⚡ Tạo agent mới trong 3 bước</h3>
+          <p>Điền thông tin, upload quy trình, xác nhận — Master lo phần còn lại. Tạo xong, submit là cả team dùng được!</p>
+        </div>
+        <button class="btn-cta-sm" onclick="openQuickCreate()">Bắt đầu ngay →</button>
+      </div>
+    </div>
+
+    <div class="home-section">
+      <div class="section-label">Agents</div>
+      <div class="section-title">Sẵn sàng phục vụ</div>
+      <div class="section-sub">Click để bắt đầu hội thoại ngay</div>
+      <div id="home-agent-grid" class="agent-row"></div>
+    </div>
+
+    <div class="home-section">
+      <div class="section-label">Hướng dẫn</div>
+      <div class="section-title">Bắt đầu trong 3 bước</div>
+      <div class="section-sub">Không cần cài đặt, không cần training</div>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">01 — Hỏi</div>
+          <h3>Cứ nói như bình thường</h3>
+          <p>Gõ tiếng Việt, không cần biết agent nào đang chạy. Hệ thống tự hiểu và tìm đúng người giúp bạn.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">02 — Nhận kết quả</div>
+          <h3>Agent chuyên biệt xử lý</h3>
+          <p>Agent tra cứu dữ liệu thật, áp quy trình chuẩn và trả lời đúng nghiệp vụ của bạn.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">03 — Chia sẻ</div>
+          <h3>Tạo và chia sẻ agent mới</h3>
+          <p>Chat với Master để tạo agent riêng. Khi hài lòng, submit để admin duyệt — sau đó cả team đều dùng được.</p>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ─── CHAT ─────────────────────────────────────────── -->
+  <section id="panel-chat" class="panel">
+    <div class="chat-layout">
+
+      <!-- Sidebar: danh sách cuộc trò chuyện theo từng agent -->
+      <aside class="chat-sidebar" id="chat-sidebar">
+        <div class="sidebar-hd">
+          <span class="sidebar-title">Chats</span>
+          <button class="sidebar-new-btn" id="sidebar-new-btn" title="Tạo chat mới">＋</button>
+        </div>
+        <div class="sidebar-list" id="sidebar-list">
+          <div class="sidebar-empty">Chưa có cuộc trò chuyện nào</div>
+        </div>
+      </aside>
+
+      <!-- Main: header + messages + input -->
+      <div class="chat-main">
+        <div class="chat-hd">
+          <div class="chd-left">
+            <div class="chd-avatar chd-avatar-auto" id="chd-avatar">✦</div>
+            <div class="chd-info">
+              <div class="chd-name" id="chd-name">Tự điều phối</div>
+              <div class="chd-sub" id="chd-sub">Hệ thống tự tìm agent phù hợp nhất</div>
+            </div>
+          </div>
+          <button class="btn-sm" id="reset-agent">＋ Chat mới</button>
+        </div>
+
+        <div id="messages"></div>
+
+        <div class="chat-input-area">
+          <div id="mention-dropdown" class="mention-dd" hidden></div>
+          <div id="attachment-preview" hidden></div>
+          <form id="chat-form">
+            <div class="input-box">
+              <label id="attach-btn" title="Đính kèm file (.txt .md .pdf .docx .png .jpg)">
+                📎
+                <input type="file" id="file-input" accept=".txt,.md,.pdf,.docx,.png,.jpg,.jpeg" multiple hidden>
+              </label>
+              <textarea id="chat-input" rows="1"
+                placeholder="Mô tả nhu cầu, hoặc @TenAgent để gọi trực tiếp…"></textarea>
+              <button type="submit" id="send-btn">↑</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ─── CATALOG ──────────────────────────────────────── -->
+  <section id="panel-catalog" class="panel">
+    <div class="inner">
+      <div class="search-row">
+        <input class="search-input" id="catalog-search" placeholder="Tìm agent hoặc skill…">
+        <select class="search-select" id="catalog-domain"><option value="">Mọi domain</option></select>
+      </div>
+      <div id="my-agents-section" hidden>
+        <div class="section-head">Agent của tôi</div>
+        <div id="my-agent-list" class="cards-grid"></div>
+      </div>
+      <div class="section-head">Tất cả agents</div>
+      <div id="agent-list" class="cards-grid"></div>
+      <div class="section-head">Skills</div>
+      <div id="skill-list" class="cards-grid"></div>
+    </div>
+  </section>
+
+  <!-- ─── REVIEW ───────────────────────────────────────── -->
+  <section id="panel-review" class="panel">
+    <div class="inner">
+      <div class="page-title">Chờ duyệt</div>
+      <div id="pending-list"></div>
+    </div>
+  </section>
+
+  <!-- ─── STATS ────────────────────────────────────────── -->
+  <section id="panel-stats" class="panel">
+    <div class="inner">
+      <div class="page-title">Dashboard</div>
+
+      <!-- Tổng quan -->
+      <div class="stats-overview" id="stats-overview">
+        <div class="stat-card" id="sc-agents"><div class="sc-num">—</div><div class="sc-label">Agents active</div></div>
+        <div class="stat-card" id="sc-skills"><div class="sc-num">—</div><div class="sc-label">Skills active</div></div>
+        <div class="stat-card" id="sc-users"><div class="sc-num">—</div><div class="sc-label">Users</div></div>
+        <div class="stat-card" id="sc-tokens"><div class="sc-num">—</div><div class="sc-label">Tổng token dùng</div></div>
+      </div>
+
+      <!-- Usage by agent -->
+      <div class="section-head">Token dùng theo agent</div>
+      <table class="stats-table" id="usage-table">
+        <thead><tr><th>Agent</th><th>Số lần gọi</th><th>Token vào</th><th>Token ra</th><th>Tổng</th></tr></thead>
+        <tbody id="usage-tbody"></tbody>
+      </table>
+
+      <!-- Feedback by agent -->
+      <div class="section-head" style="margin-top:28px">Phản hồi từ người dùng</div>
+      <table class="stats-table" id="feedback-table">
+        <thead><tr><th>Agent</th><th>👍 Tốt</th><th>👎 Tệ</th><th>Tỉ lệ hài lòng</th></tr></thead>
+        <tbody id="feedback-tbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<!-- ─── Quick Create Modal ──────────────────────────────── -->
+<div id="qc-modal" class="modal-overlay" hidden>
+  <div class="modal">
+
+    <div class="modal-header">
+      <div class="modal-title">⚡ Tạo agent nhanh</div>
+      <button class="modal-close" onclick="closeQuickCreate()">✕</button>
+    </div>
+
+    <!-- Step indicator -->
+    <div class="step-bar">
+      <div class="step-dot active" id="sd-1">
+        <div class="dot-circle">1</div>
+        <div class="dot-label">Mô tả</div>
+      </div>
+      <div class="step-line" id="sl-1"></div>
+      <div class="step-dot" id="sd-2">
+        <div class="dot-circle">2</div>
+        <div class="dot-label">Quy trình</div>
+      </div>
+      <div class="step-line" id="sl-2"></div>
+      <div class="step-dot" id="sd-3">
+        <div class="dot-circle">3</div>
+        <div class="dot-label">Xác nhận</div>
+      </div>
+    </div>
+
+    <!-- Step 1 -->
+    <div class="step-panel active" id="qc-step-1">
+      <div class="field">
+        <label>Tên agent <span class="required">*</span></label>
+        <input id="qc-name" placeholder="vd: Bé Pháp hoặc ThamDinhHopDong">
+        <div class="field-hint">Tên tự do (Unicode, tiếng Việt OK) — hệ thống tự sinh @slug để mention</div>
+      </div>
+      <div class="field">
+        <label>Domain <span class="required">*</span></label>
+        <select id="qc-domain">
+          <option value="legal">⚖️  Legal — pháp lý, hợp đồng</option>
+          <option value="finance">💰  Finance — tài chính, kế toán</option>
+          <option value="sales">📊  Sales — kinh doanh, CRM</option>
+          <option value="hr">👥  HR — nhân sự, tuyển dụng</option>
+          <option value="ops">⚙️  Operations — vận hành</option>
+          <option value="it">💻  IT — kỹ thuật, hỗ trợ</option>
+          <option value="other">📌  Khác</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Mục đích agent <span class="required">*</span></label>
+        <textarea id="qc-purpose" rows="3"
+          placeholder="Agent này dùng để làm gì? Ai sẽ dùng? Xử lý yêu cầu loại nào?&#10;vd: Thẩm định hợp đồng theo checklist 12 mục của phòng Pháp chế. Dùng khi cần review, đánh giá rủi ro hợp đồng."></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-ghost" onclick="closeQuickCreate()">Hủy</button>
+        <button class="btn-cta" onclick="qcNext(1)">Tiếp theo →</button>
+      </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="step-panel" id="qc-step-2">
+      <p class="step-desc">Upload hoặc dán quy trình chuẩn, checklist, tiêu chí đánh giá cho agent.<br>Có thể bỏ qua nếu chưa có tài liệu.</p>
+      <div class="field">
+        <label>Upload tài liệu</label>
+        <label class="upload-drop" id="qc-upload-label">
+          <input type="file" id="qc-file" accept=".txt,.md,.pdf,.docx" hidden>
+          <span id="qc-upload-text">📎 Click để chọn file<br>
+            <span style="font-size:11px;color:var(--tx3)">.txt .md .pdf .docx — tối đa 5 MB</span>
+          </span>
+        </label>
+      </div>
+      <div class="field-or">hoặc dán trực tiếp</div>
+      <div class="field">
+        <textarea id="qc-content" rows="5"
+          placeholder="Dán checklist, quy trình, tiêu chí đánh giá..."></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-ghost" onclick="qcBack(2)">← Quay lại</button>
+        <button class="btn-cta" onclick="qcNext(2)">Tiếp theo →</button>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="step-panel" id="qc-step-3">
+      <p class="step-desc">Kiểm tra lại thông tin — Master Agent sẽ tạo agent và bạn có thể xem tiến trình trong Chat.</p>
+      <div class="qc-preview">
+        <div class="preview-row">
+          <span class="preview-label">Agent</span>
+          <span id="prev-name" class="preview-value"></span>
+        </div>
+        <div class="preview-row">
+          <span class="preview-label">Domain</span>
+          <span id="prev-domain" class="preview-value"></span>
+        </div>
+        <div class="preview-row">
+          <span class="preview-label">Mục đích</span>
+          <span id="prev-purpose" class="preview-value"></span>
+        </div>
+        <div class="preview-row" id="prev-skill-row">
+          <span class="preview-label">Quy trình</span>
+          <span id="prev-skill" class="preview-value preview-skill"></span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-ghost" onclick="qcBack(3)">← Quay lại</button>
+        <button class="btn-cta" id="qc-submit-btn" onclick="executeQuickCreate()">🚀 Tạo ngay</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="app.js?v=20260613b"></script>
+</body>
+</html>
