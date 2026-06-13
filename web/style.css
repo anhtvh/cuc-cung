@@ -467,6 +467,35 @@ main { flex: 1; overflow: hidden; display: flex; min-height: 0; }
 .conv-del:hover { color: #f87171; background: rgba(248,113,113,.12); }
 .conv-item:hover .conv-del { display: block; }
 
+.conv-rename {
+  display: none;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--tx3);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color .12s, background .12s;
+}
+.conv-rename:hover { color: var(--blue); background: rgba(99,102,241,.12); }
+.conv-item:hover .conv-rename { display: block; }
+
+.conv-rename-input {
+  width: 100%;
+  background: var(--s1);
+  border: 1px solid var(--blue);
+  border-radius: 4px;
+  color: var(--tx);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 1px 5px;
+  outline: none;
+  min-width: 0;
+}
+
 /* ── Main chat area ──────────────────────────────────── */
 .chat-main {
   flex: 1;

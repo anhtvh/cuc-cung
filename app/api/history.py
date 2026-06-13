@@ -1,6 +1,7 @@
 """GET /history — trả danh sách agent user đã chat để restore sidebar khi F5."""
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 
 from app.api.deps import Container, get_container, get_user_id
 
@@ -31,6 +32,25 @@ def get_conversation_messages(
     """
     msgs = c.memory.get_history(user_id, agent_name, limit=50)
     return [{"role": m.role, "content": m.content} for m in msgs]
+
+
+class ConvTitleRequest(BaseModel):
+    title: str
+
+
+@router.patch("/{agent_name}/title")
+def update_conversation_title(
+    agent_name: str,
+    body: ConvTitleRequest,
+    c: Container = Depends(get_container),
+    user_id: str = Depends(get_user_id),
+):
+    """Đặt tên hiển thị cho một conversation (auto-title từ tin nhắn đầu hoặc user rename)."""
+    title = body.title.strip()
+    if not title:
+        return {"ok": False, "reason": "title trống"}
+    c.conv_meta.rename(user_id, agent_name, title)
+    return {"ok": True, "agent_name": agent_name, "title": title}
 
 
 @router.delete("/{agent_name}")

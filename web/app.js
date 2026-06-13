@@ -106,7 +106,7 @@ function renderHomeAgents() {
     <div class="ahc new-card" onclick="startChatWith('master','')">
       <span class="ahc-icon">✨</span>
       <div class="ahc-name">Tạo agent mới</div>
-      <div class="ahc-desc">Chat với Master để tạo agent chuyên biệt theo nghiệp vụ của bạn — không cần code.</div>
+      <div class="ahc-desc">Chat với Đại tổng quản để tạo agent chuyên biệt theo nghiệp vụ của bạn — không cần code.</div>
       <div class="ahc-tag"><span class="tag" style="color:#a5b4fc;background:rgba(99,102,241,.12)">builder</span></div>
     </div>`);
 
@@ -139,7 +139,7 @@ window.startChatWith = function(name, desc) {
   // Tạo entry trong convStore nếu chưa có
   if (!state.convStore.has(name)) {
     const agentData = _agentsCache.find((a) => a.name === name);
-    state.convStore.set(name, { key: name, agentName: name, agentMeta: agentData ? { domain: agentData.domain } : null, lastText: "", updatedAt: Date.now() });
+    state.convStore.set(name, { key: name, agentName: name, agentMeta: agentData ? { domain: agentData.domain } : null, lastText: "", updatedAt: Date.now(), title: null, titleSent: true });
   } else {
     state.convStore.get(name).updatedAt = Date.now();
   }
@@ -176,7 +176,7 @@ async function showWelcome() {
   cards.push(`<button class="wcard" data-msg="Tôi muốn tạo một agent mới">
     <span class="wcard-icon">✨</span>
     <div class="wcard-name">Tạo agent mới</div>
-    <div class="wcard-hint">Master phỏng vấn và tạo agent cho bạn</div>
+    <div class="wcard-hint">Đại tổng quản phỏng vấn và tạo agent cho bạn</div>
   </button>`);
 
   welcome.innerHTML = `
@@ -291,7 +291,7 @@ function turnProcess(assistantDiv) {
     proc.innerHTML =
       `<button type="button" class="proc-toggle">` +
         `<span class="proc-ic">⚙</span>` +
-        `<span class="proc-label">Đang xử lý…</span>` +
+        `<span class="proc-label">Đang làm việc…</span>` +
         `<span class="proc-caret">▾</span>` +
       `</button><div class="proc-body"></div>`;
     assistantDiv.insertBefore(proc, assistantDiv.querySelector(".msg-content"));
@@ -338,10 +338,10 @@ function addHandoff(name, description) {
   const card = document.createElement("div");
   card.className = "handoff-card";
   card.innerHTML = `
-    <div class="handoff-title">${isMaster ? "✨ Master" : "👋 " + esc(name)}</div>
+    <div class="handoff-title">${isMaster ? "✨ Đại tổng quản" : "👋 " + esc(name)}</div>
     <div class="handoff-body">${
       isMaster
-        ? "Chào bạn! Mình là <strong>Master</strong> — chuyên giúp tạo agent mới 🏗️. Bạn muốn tìm agent có sẵn hay xây một con riêng? Kể mình nghe nhé!"
+        ? "Chào bạn! Mình là <strong>Đại tổng quản</strong> — mình có thể giúp bạn tìm agent có sẵn hoặc tạo một agent chuyên biệt riêng. Bạn đang cần gì vậy? 😊"
         : `Chào bạn! Mình là <strong>${esc(name)}</strong>${short ? " — " + esc(short) : ""}. Cứ hỏi thoải mái, mình ở đây rồi 😊`
     }</div>
     ${statusBadge}`;
@@ -352,6 +352,15 @@ function addHandoff(name, description) {
 
 function scrollBottom() {
   $("#messages").scrollTop = $("#messages").scrollHeight;
+}
+
+/* Tạo tiêu đề tự động từ tin nhắn đầu tiên (tối đa 48 ký tự, cắt ở ranh giới từ). */
+function autoTitle(message) {
+  const clean = message.trim().replace(/\s+/g, " ");
+  if (clean.length <= 48) return clean;
+  const cut = clean.slice(0, 48);
+  const lastSpace = cut.lastIndexOf(" ");
+  return (lastSpace > 20 ? cut.slice(0, lastSpace) : cut) + "…";
 }
 
 /* ─── Conv store (per-agent conversation persistence) ─── */
@@ -397,7 +406,7 @@ async function restoreConv(key) {
             div.appendChild(mc);
             msgs.appendChild(div);
           } else if (msg.role === "assistant") {
-            const tag = agentName === "master" ? "Master Agent" : "@" + agentName;
+            const tag = agentName === "master" ? "Đại tổng quản" : "@" + agentName;
             const div = addMsg("assistant", "", tag);
             div.querySelector(".msg-content").innerHTML = renderMarkdown(msg.content);
           }
@@ -451,10 +460,10 @@ function updateChatHeader(agentName) {
     return;
   }
   if (agentName === "master") {
-    avatar.textContent = "M";
+    avatar.textContent = "Đ";
     avatar.className   = "chd-avatar chd-avatar-master";
-    nameEl.textContent = "Master Agent";
-    subEl.textContent  = "Factory + điều phối — tạo agent mới hoặc kết nối chuyên gia";
+    nameEl.textContent = "Đại tổng quản";
+    subEl.textContent  = "Tạo agent mới hoặc kết nối bạn với đúng chuyên gia — cứ chat tự nhiên nhé 😊";
     return;
   }
   const a = _agentsCache.find((x) => x.name === agentName);
@@ -476,20 +485,67 @@ function renderSidebar() {
   list.innerHTML = entries.map((e) => {
     const isActive   = e.key === currentKey;
     const agentName  = e.agentName;
-    const displayName = !agentName ? "Tự điều phối" : agentName === "master" ? "Master" : agentName;
+    const displayName = !agentName ? "Tự điều phối" : agentName === "master" ? "Đại tổng quản" : agentName;
+    const convTitle   = e.title || displayName;
     const firstChar   = !agentName ? "✦" : agentName[0].toUpperCase();
     const domain = e.agentMeta?.domain || (agentName === "master" ? "master" : !agentName ? "auto" : "default");
     const preview = (e.lastText || "…").slice(0, 48);
     return `<div class="conv-item${isActive ? " active" : ""}" onclick="switchToConv('${esc(e.key)}')" data-key="${esc(e.key)}">
       <div class="conv-av conv-av-${domain}">${firstChar}</div>
       <div class="conv-info">
-        <div class="conv-name">${esc(displayName)}</div>
+        <div class="conv-name">${esc(convTitle)}</div>
         <div class="conv-last">${esc(preview)}</div>
       </div>
+      <button class="conv-rename" onclick="event.stopPropagation(); startRename('${esc(e.key)}')" title="Đổi tên">✏</button>
       <button class="conv-del" onclick="event.stopPropagation(); deleteConv('${esc(e.key)}')" title="Xóa cuộc trò chuyện">✕</button>
     </div>`;
   }).join("");
 }
+
+/* ─── Conversation rename ────────────────────────────────── */
+window.startRename = function(key) {
+  const item = document.querySelector(`.conv-item[data-key="${CSS.escape(key)}"]`);
+  if (!item) return;
+  const nameEl = item.querySelector(".conv-name");
+  if (!nameEl) return;
+  const entry = state.convStore.get(key);
+  const original = entry?.title || nameEl.textContent;
+
+  const input = document.createElement("input");
+  input.className = "conv-rename-input";
+  input.value = original;
+  nameEl.replaceWith(input);
+  input.focus();
+  input.select();
+
+  let cancelled = false;
+  const commit = async () => {
+    const newTitle = cancelled ? original : (input.value.trim() || original);
+    const div = document.createElement("div");
+    div.className = "conv-name";
+    div.textContent = newTitle;
+    input.replaceWith(div);
+    if (!cancelled && entry) {
+      entry.title = newTitle;
+      entry.titleSent = true;
+      const agentName = key === "__auto__" ? null : key;
+      if (agentName) {
+        fetch(`/history/${encodeURIComponent(agentName)}/title`, {
+          method: "PATCH",
+          headers: headers({ "Content-Type": "application/json" }),
+          body: JSON.stringify({ title: newTitle }),
+        }).catch(() => {});
+      }
+    }
+    // Re-render sidebar để title mới hiển thị đồng bộ
+    if (!cancelled) renderSidebar();
+  };
+  input.addEventListener("blur", commit);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); input.blur(); }
+    if (e.key === "Escape") { e.preventDefault(); cancelled = true; input.blur(); }
+  });
+};
 
 function showTyping() {
   hideTyping();
@@ -728,7 +784,7 @@ $("#chat-form").addEventListener("submit", async (e) => {
   // Tạo convStore entry khi bắt đầu send (trước khi meta event đổi stickyAgent)
   const _preSendKey = currentConvKey();
   if (!state.convStore.has(_preSendKey)) {
-    state.convStore.set(_preSendKey, { key: _preSendKey, agentName: state.stickyAgent, agentMeta: null, lastText: message.slice(0, 60), updatedAt: Date.now() });
+    state.convStore.set(_preSendKey, { key: _preSendKey, agentName: state.stickyAgent, agentMeta: null, lastText: message.slice(0, 60), updatedAt: Date.now(), title: autoTitle(message), titleSent: false });
     renderSidebar();
   }
 
@@ -802,7 +858,7 @@ $("#chat-form").addEventListener("submit", async (e) => {
               _e.key = data.agent_name; _e.agentName = data.agent_name;
               state.convStore.set(data.agent_name, _e);
             } else if (!state.convStore.has(data.agent_name)) {
-              state.convStore.set(data.agent_name, { key: data.agent_name, agentName: data.agent_name, agentMeta: null, lastText: "", updatedAt: Date.now() });
+              state.convStore.set(data.agent_name, { key: data.agent_name, agentName: data.agent_name, agentMeta: null, lastText: "", updatedAt: Date.now(), title: null, titleSent: true });
             }
           }
           const _metaEntry = state.convStore.get(data.agent_name);
@@ -822,7 +878,7 @@ $("#chat-form").addEventListener("submit", async (e) => {
         } else if (ev === "delta") {
           hideTyping();
           if (!assistantDiv) {
-            const tag = state.stickyAgent === "master" ? "Master Agent" : "@" + state.stickyAgent;
+            const tag = state.stickyAgent === "master" ? "Đại tổng quản" : "@" + state.stickyAgent;
             assistantDiv = addMsg("assistant", "", tag);
           }
           assistantText += data.text;
@@ -844,7 +900,7 @@ $("#chat-form").addEventListener("submit", async (e) => {
           } else {
             // Agent thường: gom vào accordion "quá trình xử lý", giữ NGUYÊN 1 bubble cho cả lượt
             if (!assistantDiv) {
-              const tag = state.stickyAgent === "master" ? "Master Agent" : "@" + state.stickyAgent;
+              const tag = state.stickyAgent === "master" ? "Đại tổng quản" : "@" + state.stickyAgent;
               assistantDiv = addMsg("assistant", "", tag);
             }
             // Narration trước khi gọi tool = "suy nghĩ" → gấp vào quá trình, không lẫn vào kết quả
@@ -897,11 +953,22 @@ $("#chat-form").addEventListener("submit", async (e) => {
         addFeedbackButtons(assistantDiv, state.stickyAgent, assistantText);
       }
     }
-    // Cập nhật preview text trong sidebar
+    // Cập nhật preview text trong sidebar + lưu auto-title lên server (lần đầu)
     if (assistantText) {
       const _doneKey = currentConvKey();
       const _doneEntry = state.convStore.get(_doneKey);
-      if (_doneEntry) { _doneEntry.lastText = assistantText.slice(0, 60); _doneEntry.updatedAt = Date.now(); }
+      if (_doneEntry) {
+        _doneEntry.lastText = assistantText.slice(0, 60);
+        _doneEntry.updatedAt = Date.now();
+        if (!_doneEntry.titleSent && _doneKey !== "__auto__" && _doneEntry.title) {
+          _doneEntry.titleSent = true;
+          fetch(`/history/${encodeURIComponent(_doneKey)}/title`, {
+            method: "PATCH",
+            headers: headers({ "Content-Type": "application/json" }),
+            body: JSON.stringify({ title: _doneEntry.title }),
+          }).catch(() => {});
+        }
+      }
       renderSidebar();
     }
 
@@ -912,7 +979,7 @@ $("#chat-form").addEventListener("submit", async (e) => {
 
       if (isEscalation) {
         // Escalation từ agent con: hiện toast để user biết chuyện gì đang xảy ra
-        addMsg("tool-note", `↩ Đang hỏi Master tìm người phù hợp hơn…`);
+        addMsg("tool-note", `↩ Đang nhờ Đại tổng quản tìm người phù hợp hơn…`);
       }
 
       await new Promise((r) => setTimeout(r, isEscalation ? 300 : 500));
@@ -921,7 +988,7 @@ $("#chat-form").addEventListener("submit", async (e) => {
       setCurrentAgent(agent_name);
       if (!state.convStore.has(agent_name)) {
         const _ad = _agentsCache.find((a) => a.name === agent_name);
-        state.convStore.set(agent_name, { key: agent_name, agentName: agent_name, agentMeta: _ad ? { domain: _ad.domain } : null, lastText: "", updatedAt: Date.now() });
+        state.convStore.set(agent_name, { key: agent_name, agentName: agent_name, agentMeta: _ad ? { domain: _ad.domain } : null, lastText: "", updatedAt: Date.now(), title: null, titleSent: true });
       } else {
         state.convStore.get(agent_name).updatedAt = Date.now();
       }
@@ -1483,8 +1550,8 @@ function selectMention(name) {
 }
 
 const _MASTER_MENTION_ENTRY = {
-  name: "master", slug: "master",
-  description: "Tạo agent mới hoặc điều phối sang chuyên gia phù hợp",
+  name: "Đại tổng quản", slug: "master",
+  description: "Tạo agent mới hoặc kết nối bạn với đúng chuyên gia",
   domain: "master", status: "public",
 };
 
@@ -1679,7 +1746,7 @@ Hãy thực hiện ngay: (1) kiểm tra trùng lặp, (2) tạo skill từ quy t
   state.stickyAgent = "master";
   setCurrentAgent("master");
   if (!state.convStore.has("master")) {
-    state.convStore.set("master", { key: "master", agentName: "master", agentMeta: null, lastText: "", updatedAt: Date.now() });
+    state.convStore.set("master", { key: "master", agentName: "master", agentMeta: null, lastText: "", updatedAt: Date.now(), title: null, titleSent: true });
   } else {
     state.convStore.get("master").updatedAt = Date.now();
   }
@@ -1790,6 +1857,8 @@ async function restoreHistoryFromServer() {
           agentMeta: agentData ? { domain: agentData.domain } : null,
           lastText: entry.last_text || "…",
           updatedAt: entry.updated_at ? new Date(entry.updated_at).getTime() : Date.now(),
+          title: entry.title || null,
+          titleSent: true,  // đã lưu trên server rồi
           container: null,  // không có DOM — click sẽ bắt đầu chat mới với history từ server
         });
       }

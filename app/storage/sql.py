@@ -108,6 +108,7 @@ class ConvMetaRow(Base):
     user_id: Mapped[str] = mapped_column(Text, nullable=False)
     agent_name: Mapped[str] = mapped_column(Text, nullable=False)
     last_text: Mapped[str | None] = mapped_column(Text)
+    title: Mapped[str | None] = mapped_column(Text)     # tên do user đặt hoặc auto từ tin nhắn đầu
     updated_at: Mapped[str | None] = mapped_column(Text)
 
 
@@ -434,6 +435,21 @@ class SqlConvMetaRepo:
                 s.add(ConvMetaRow(user_id=user_id, agent_name=agent_name, last_text=last_text[:120], updated_at=now_iso()))
             s.commit()
 
+    def rename(self, user_id: str, agent_name: str, title: str) -> None:
+        """Đặt (hoặc ghi đè) tên hiển thị cho một conversation."""
+        with Session(self._engine) as s:
+            existing = s.execute(
+                select(ConvMetaRow)
+                .where(ConvMetaRow.user_id == user_id, ConvMetaRow.agent_name == agent_name)
+            ).scalar_one_or_none()
+            if existing:
+                existing.title = title[:100]
+                existing.updated_at = now_iso()
+            else:
+                # Row chưa tồn tại (race condition) — tạo luôn để title không bị mất
+                s.add(ConvMetaRow(user_id=user_id, agent_name=agent_name, title=title[:100], updated_at=now_iso()))
+            s.commit()
+
     def list(self, user_id: str, limit: int = 20) -> list[dict]:
         with Session(self._engine) as s:
             q = (
@@ -443,7 +459,15 @@ class SqlConvMetaRepo:
                 .limit(limit)
             )
             rows = list(s.scalars(q))
-        return [{"agent_name": r.agent_name, "last_text": r.last_text or "", "updated_at": r.updated_at or ""} for r in rows]
+        return [
+            {
+                "agent_name": r.agent_name,
+                "last_text": r.last_text or "",
+                "title": r.title or "",
+                "updated_at": r.updated_at or "",
+            }
+            for r in rows
+        ]
 
     def delete(self, user_id: str, agent_name: str) -> None:
         with Session(self._engine) as s:
