@@ -22,21 +22,25 @@ Deploy trên **GreenNode AgentBase** (Docker → Container Registry → Custom A
 | **Tool name wire** | Dấu chấm bị cấm → `server__tool` (2 gạch dưới); UI/Review vẫn hiển thị `server.tool` |
 | **Agent con = virtual** | Row config trong registry, chạy chung engine Hub, tạo tức thì, không deploy runtime riêng |
 | **Env trống** | `.env` có `MODEL=` (trống) đè mất default → đã fix validator fallback trong `app/config.py` |
+| **Memory backend** | `MEMORY_BACKEND=agentbase`, store `memory-82c99d4a-6de7-450a-bfaf-251324f188a4` (30 ngày) |
+| **MCP Gateway** | `agent-hub-gw` ACTIVE, endpoint `https://gw-agent-hub-gw-111745.agentbase-gateway.aiplatform.vngcloud.vn`, target `websearch` → `/mcp` của app. Bật bằng `MCP_GATEWAY_ENDPOINT=<gateway_url>` sau deploy. |
+| **Gateway call path** | `POST {gateway_endpoint}/{target_name}` — gateway route theo target prefix |
 
 ---
 
-## 3. Tiến độ hiện tại (13/06/2026 sáng)
+## 3. Tiến độ hiện tại (13/06/2026 chiều)
 
 | Mốc | Trạng thái |
 |---|---|
 | Go/no-go checks (cả 3) | ✅ PASS — chốt Plan A |
-| Skeleton + toàn bộ code core | ✅ 27/27 test pass |
+| Skeleton + toàn bộ code core | ✅ 52/52 test pass |
 | Smoke test MaaS thật | ✅ master chat + tool loop + stream SSE OK |
 | Router classify thật | ✅ VERIFIED — "thẩm định hợp đồng" → `ThamDinhHopDong/high` |
-| Governance UI end-to-end | ⬜ 13/06 sáng (kế tiếp) |
-| Deploy AgentBase PUBLIC | ⬜ 13/06 chiều (tiếp `/agentbase-wizard` sau bước credential) |
-| Memory module (swap) | ⬜ 14/06 |
-| MCP Gateway server thật | ⬜ 14/06 |
+| Multi-agent orchestration | ✅ run_agent, sub-agent card UI, router detect ≥2 mentions |
+| Memory AgentBase cloud | ✅ store tạo, MEMORY_BACKEND=agentbase, lịch sử lưu cloud |
+| MCP Gateway thật | ✅ gateway `agent-hub-gw` ACTIVE; PATCH target sau deploy |
+| Governance UI end-to-end | ⬜ |
+| Deploy AgentBase PUBLIC | ⬜ (tiếp theo) → sau deploy: PATCH gateway target + set MCP_GATEWAY_ENDPOINT |
 | Test end-to-end video | ⬜ 15/06 |
 | Video + README + nộp | ⬜ 16/06 |
 
@@ -127,3 +131,5 @@ Python 3.14 local (target code 3.12+), Docker `python:3.12-slim`.
 4. Tool name trên wire: `server__tool` (2 gạch), UI hiển thị `server.tool`.
 5. `/agentbase-wizard` đã DỪNG sau bước credential — chỉ chạy tiếp khi code đã đủ (tránh deploy agent rỗng).
 6. `master_system.md` là nguồn sự thật của master prompt — seed tự sync vào DB khi khởi động, không sửa DB thủ công.
+7. **MCP Gateway route**: gọi `POST {gateway_endpoint}/{target_name}` (không phải root). `McpGatewayProvider._rpc_url()` đã xử lý tự động. Gateway hiện `agent-hub-gw`, target `websearch`. Sau deploy: PATCH target endpoint về `{deployed_app_url}/mcp` rồi set `MCP_GATEWAY_ENDPOINT`.
+8. **Sau deploy**: chạy 2 lệnh: (1) PATCH gateway target URL, (2) set `MCP_GATEWAY_ENDPOINT=https://gw-agent-hub-gw-111745.agentbase-gateway.aiplatform.vngcloud.vn` trong env container → app tự dùng gateway thay DuckDuckGo local.

@@ -111,10 +111,17 @@ class McpGatewayProvider:
             "Accept": "application/json",
         }
 
+    def _rpc_url(self) -> str:
+        # AgentBase Gateway route: POST <gateway_endpoint>/<target_name>
+        # Nếu không có target → gọi root (single-target gateway không cần prefix).
+        if self._target:
+            return f"{self._endpoint}/{self._target}"
+        return self._endpoint
+
     def _rpc(self, method: str, params: dict | None = None) -> Any:
         payload: dict = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}
         resp = httpx.post(
-            self._endpoint,
+            self._rpc_url(),
             headers=self._headers(),
             json=payload,
             timeout=self._timeout,
