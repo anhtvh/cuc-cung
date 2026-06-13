@@ -121,14 +121,13 @@ function renderHomeAgents() {
 
 let _homeActiveDomain = "";
 
-document.addEventListener("DOMContentLoaded", () => {
-  $("#home-search")?.addEventListener("input", renderHomeAgents);
-  $("#home-domain-tabs")?.querySelectorAll(".hdt").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      _homeActiveDomain = btn.dataset.domain;
-      $("#home-domain-tabs").querySelectorAll(".hdt").forEach((b) => b.classList.toggle("active", b === btn));
-      renderHomeAgents();
-    });
+// app.js chạy sau khi DOM đã ready (script ở cuối <body>) — không cần DOMContentLoaded
+$("#home-search")?.addEventListener("input", renderHomeAgents);
+$("#home-domain-tabs")?.querySelectorAll(".hdt").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    _homeActiveDomain = btn.dataset.domain;
+    $("#home-domain-tabs").querySelectorAll(".hdt").forEach((b) => b.classList.toggle("active", b === btn));
+    renderHomeAgents();
   });
 });
 

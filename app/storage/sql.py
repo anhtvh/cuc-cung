@@ -258,12 +258,12 @@ class SqlAgentRepo:
             return list(s.scalars(q))
 
     def delete(self, name: str) -> None:
-        """Xóa agent + cascade: agent_skills, messages, usage_log."""
-        # B-08: bọc trong begin() để rollback atomic nếu bất kỳ execute nào fail
+        """Xóa agent + cascade: agent_skills, messages, usage_log, conv_meta."""
         with Session(self._engine) as s, s.begin():
             s.execute(delete(AgentSkillRow).where(AgentSkillRow.agent_name == name))
             s.execute(delete(MessageRow).where(MessageRow.agent_name == name))
             s.execute(delete(UsageRow).where(UsageRow.agent_name == name))
+            s.execute(delete(ConvMetaRow).where(ConvMetaRow.agent_name == name))
             s.execute(delete(AgentRow).where(AgentRow.name == name))
 
 

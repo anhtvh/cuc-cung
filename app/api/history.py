@@ -25,11 +25,12 @@ def get_conversation_messages(
     c: Container = Depends(get_container),
     user_id: str = Depends(get_user_id),
 ):
-    """Trả [{role, content}] của một conversation cụ thể để render lại khi click sidebar."""
-    if isinstance(c.memory, SqlMemory):
-        msgs = c.memory.get_history(user_id, agent_name, limit=50)
-        return [{"role": m.role, "content": m.content} for m in msgs]
-    return []
+    """Trả [{role, content}] của một conversation cụ thể để render lại khi click sidebar.
+
+    Gọi trực tiếp memory.get_history() — hoạt động với mọi backend (SqlMemory, AgentBaseMemory).
+    """
+    msgs = c.memory.get_history(user_id, agent_name, limit=50)
+    return [{"role": m.role, "content": m.content} for m in msgs]
 
 
 @router.delete("/{agent_name}")
@@ -38,7 +39,11 @@ def delete_conversation(
     c: Container = Depends(get_container),
     user_id: str = Depends(get_user_id),
 ):
-    """Xóa toàn bộ lịch sử chat của user với agent đó."""
+    """Xóa toàn bộ lịch sử chat của user với agent đó.
+
+    SqlMemory: xóa cả bảng messages. AgentBase: không hỗ trợ delete session — bỏ qua.
+    conv_meta luôn xóa bất kể backend.
+    """
     from app.memory.sql_memory import SqlMemory
     if isinstance(c.memory, SqlMemory):
         c.memory.delete_conversation(user_id, agent_name)

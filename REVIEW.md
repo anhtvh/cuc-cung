@@ -251,26 +251,41 @@ Master có thể nhận link URL → fetch và trình bày nội dung → user x
 
 ---
 
-## Trạng thái fix (13/06/2026)
+## Trạng thái fix (cập nhật 13/06/2026)
 
 | ID | Mô tả ngắn | Status |
 |---|---|---|
-| L-04 | System prompt context guard (truncate skill >8k chars) | ✅ `chat_engine.py` |
+| B-01 | `GET /skills` lộ private skill người khác | ✅ `skills.py` filter by owner/public |
+| B-02 | `GET /skills/{name}` không check quyền | ✅ `skills.py` 403 nếu không phải owner/admin/public |
+| B-03 | `review.py` dedup không truyền `user_id` | ✅ `review.py` truyền `user_id=admin, domain=a.domain` |
+| B-04 | Slug trùng nhau sau slugify | ✅ `governance.check_duplicate_slug()` + master.py gọi trước create |
+| B-05 | `_h_update_agent` mutate dict caller | ✅ `master.py` dùng `.get()` thay `.pop()` |
+| B-06 | `openai_client.chat_with_tools` không stream | ✅ `openai_client.py` `stream=True` + accumulate delta |
+| B-07 | `get_current_date` trả UTC, không UTC+7 | ✅ `catalog.py` `timezone(timedelta(hours=7))` |
+| B-08 | `SqlAgentRepo.delete` không atomic | ✅ `sql.py` `with Session, s.begin()` + cascade conv_meta |
+| B-10 | Routing attachment dùng string cứng | ✅ `chat.py` truyền `filename + content_type` |
+| L-01 | Delegate không có fallback text | ✅ `chat_engine.py` emit delta trước delegate event |
+| L-02 | `submit_for_review` không auto-submit skill | ✅ `master.py` `_h_submit_for_review` tự submit skill private kèm |
+| L-03 | Memory search dùng `agent.name` thay vì message | ✅ `chat_engine.py` `message or agent.name` |
+| L-04 | System prompt context guard | ✅ `chat_engine.py` truncate skill >8k + warn >30k |
 | L-05 | Shared ThreadPoolExecutor trong ToolCatalog | ✅ `catalog.py` |
 | L-06 | Cache list_tools MCP Gateway với TTL 60s | ✅ `mcp_gateway.py` |
 | L-07 | Pre-filter by domain trước khi gửi LLM dedup | ✅ `governance.py` |
-| L-08 | Slug trùng hard-block | ✅ đã cover trong B-04 |
+| L-08 | Slug trùng hard-block | ✅ cover trong B-04 |
 | L-09 | Stale sticky agent → fallback master với note | ✅ `router.py` |
 | L-10 | Seed bypass governance — thêm comment rõ ràng | ✅ `demo_data.py` |
-| L-11 | Double `updated_at` write — bỏ set trong governance | ✅ `governance.py` |
-| I-01 | DB indexes (messages, usage_log, agents) | ✅ migration 0003 |
-| I-02 | Auth note comment về security risk contest | ✅ `middleware.py` |
-| I-03 | parse_json_loose dùng rfind thay greedy regex | ✅ `base.py` |
-| I-04 | Reject double-space trong agent name | ✅ `governance.py` |
-| I-05 | escalate_enabled per-agent flag | ✅ `models.py` + migration 0003 |
-| I-06 | max_chat_calls_per_session config field | ✅ `config.py` |
+| L-11 | Double `updated_at` write | ✅ `governance.py` |
+| I-01 | DB indexes | ✅ migration 0003 |
+| I-02 | Auth note comment về security risk | ✅ `middleware.py` |
+| I-03 | `parse_json_loose` greedy regex | ✅ `base.py` |
+| I-04 | Reject double-space agent name | ✅ `governance.py` |
+| I-05 | `escalate_enabled` per-agent flag | ✅ `models.py` + migration 0003 |
+| I-06 | `max_chat_calls_per_session` | ✅ `config.py` |
 | I-07 | Magic bytes detect image type | ✅ `upload.py` |
-| I-08 | Retry 1 lần khi AgentBaseMemory.append fail | ✅ `agentbase_memory.py` |
-| I-09 | IamTokenProvider không giữ lock khi gọi HTTP | ✅ `mcp_gateway.py` |
+| I-08 | Retry AgentBaseMemory.append | ✅ `agentbase_memory.py` |
+| I-09 | IamTokenProvider không giữ lock khi HTTP | ✅ `mcp_gateway.py` |
 | I-10 | Tests cho upload + catalog + parse_json_loose | ✅ `test_upload.py`, `test_catalog.py` |
 | I-11 | Pin Python patch version trong Dockerfile | ✅ `python:3.12.10-slim` |
+| — | `history/{name}` trả rỗng với AgentBase backend | ✅ `history.py` gọi `memory.get_history()` trực tiếp |
+| — | `conv_meta` không clean khi xóa agent | ✅ `sql.py` cascade delete trong `SqlAgentRepo.delete` |
+| — | Router prompt quá ngắn → kém chính xác tiếng Việt | ✅ `router_system.md` thêm rules, ví dụ, xử lý không dấu |
