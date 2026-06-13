@@ -67,11 +67,11 @@ app/
   storage/sql.py         — SQLAlchemy 2.0; 5 bảng (agents, skills, agent_skills, messages, usage_log)
   memory/
     sql_memory.py        — fallback SQLite
-    agentbase_memory.py  — skeleton, implement 14/06
+    agentbase_memory.py  — IAM auth + get_history/append/search; MEMORY_BACKEND=agentbase để bật
   tools/
     catalog.py           — registry tool → provider
     mock/contract_db.py, company_docs.py — mock MCP server demo
-    mcp_gateway.py       — skeleton, implement 14/06
+    mcp_gateway.py       — IamTokenProvider + McpGatewayProvider; gateway agent-hub-gw ACTIVE trên AgentBase
   api/
     chat.py              — POST /chat SSE
     review.py            — admin approve/reject
