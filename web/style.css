@@ -1626,3 +1626,137 @@ main { flex: 1; overflow: hidden; display: flex; min-height: 0; }
   color: var(--tx2);
   line-height: 1.65;
 }
+
+/* ─── Path cards (home hero) ────────────────────────────── */
+.path-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 36px auto 0;
+  max-width: 620px;
+  text-align: left;
+}
+@media (max-width: 600px) { .path-cards { grid-template-columns: 1fr; } }
+
+.path-card {
+  background: var(--s1);
+  border: 1px solid var(--bd);
+  border-radius: 16px;
+  padding: 26px 22px;
+  cursor: pointer;
+  transition: border-color .15s, transform .12s, box-shadow .15s;
+}
+.path-chat:hover   { border-color: var(--blue); box-shadow: 0 0 0 1px rgba(59,130,246,.15), 0 8px 32px rgba(0,0,0,.3); transform: translateY(-2px); }
+.path-create:hover { border-color: #8b5cf6;     box-shadow: 0 0 0 1px rgba(139,92,246,.15),  0 8px 32px rgba(0,0,0,.3); transform: translateY(-2px); }
+
+.path-icon  { font-size: 30px; margin-bottom: 12px; }
+.path-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; letter-spacing: -.02em; color: var(--tx); }
+.path-desc  { font-size: 13px; color: var(--tx2); line-height: 1.65; margin-bottom: 16px; }
+.path-cta   { font-size: 13px; font-weight: 600; color: var(--blue); }
+.path-create .path-cta { color: #a78bfa; }
+
+/* ─── Kho Agent (marketplace) ───────────────────────────── */
+.mp-header { margin-bottom: 20px; }
+.mp-title  { font-size: 22px; font-weight: 700; letter-spacing: -.02em; margin-bottom: 4px; }
+.mp-sub    { font-size: 14px; color: var(--tx2); }
+.link-btn-inline {
+  background: none; border: none; color: var(--blue);
+  font-size: inherit; cursor: pointer; padding: 0;
+  font-weight: 500; text-decoration: underline; text-underline-offset: 2px;
+}
+.link-btn-inline:hover { opacity: .8; }
+
+.mp-search { width: 100%; margin-bottom: 14px; }
+
+.mp-cats { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
+.mp-cat {
+  background: var(--s1);
+  border: 1px solid var(--bd);
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 13px;
+  color: var(--tx2);
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+}
+.mp-cat:hover  { border-color: var(--bd2); color: var(--tx); }
+.mp-cat.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+
+.mp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.mp-card {
+  background: var(--s1);
+  border: 1px solid var(--bd);
+  border-radius: var(--r2);
+  padding: 20px;
+  cursor: pointer;
+  transition: border-color .15s, box-shadow .15s, transform .12s;
+  display: flex;
+  flex-direction: column;
+}
+.mp-card:hover {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 1px rgba(59,130,246,.12), 0 8px 24px rgba(0,0,0,.3);
+  transform: translateY(-2px);
+}
+.mp-card-icon    { font-size: 28px; margin-bottom: 12px; }
+.mp-card-name    { font-size: 15px; font-weight: 700; margin-bottom: 6px; letter-spacing: -.01em; color: var(--tx); }
+.mp-card-tagline {
+  font-size: 13px; color: var(--tx2); line-height: 1.6;
+  margin-bottom: 14px; flex: 1;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.mp-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: auto; }
+.mp-card-meta   { font-size: 12px; color: var(--tx3); }
+
+.btn-talk {
+  background: rgba(59,130,246,.12);
+  color: #93c5fd;
+  border: 1px solid rgba(59,130,246,.25);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .12s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.btn-talk:hover { background: rgba(59,130,246,.22); }
+
+/* ─── Welcome paths (chat tab) ──────────────────────────── */
+.welcome-paths {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  width: 100%;
+  max-width: 500px;
+}
+@media (max-width: 500px) { .welcome-paths { grid-template-columns: 1fr; } }
+
+.welcome-path {
+  background: var(--s1);
+  border: 1px solid var(--bd);
+  border-radius: var(--r2);
+  padding: 18px 16px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color .15s, transform .1s;
+}
+.wp-chat:hover   { border-color: var(--blue); transform: translateY(-1px); }
+.wp-create:hover { border-color: #8b5cf6;     transform: translateY(-1px); }
+
+.welcome-path-icon  { font-size: 22px; display: block; margin-bottom: 8px; }
+.welcome-path-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; color: var(--tx); }
+.welcome-path-desc  { font-size: 12px; color: var(--tx2); line-height: 1.5; }
+
+.welcome-or {
+  font-size: 12px; color: var(--tx3);
+  margin: 16px 0 8px;
+}

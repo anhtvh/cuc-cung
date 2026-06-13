@@ -161,30 +161,55 @@ async function showWelcome() {
   try { agents = await fetch("/agents", { headers: headers() }).then((r) => r.json()); } catch (_) {}
   const active = agents.filter((a) => a.status === "public");
 
-  const firstName = state.userId.split(".")[0];
+  const rawName = state.userId.split(".")[0];
+  const hello = rawName.charAt(0).toUpperCase() + rawName.slice(1);
   const welcome = document.createElement("div");
   welcome.id = "welcome";
 
-  const cards = active.map((a) => {
-    const hint = a.tagline || a.description.split(/[.。]/)[0].slice(0, 52);
+  const quickCards = active.slice(0, 6).map((a) => {
+    const hint = a.tagline || a.description.split(/[.。]/)[0].slice(0, 48);
     return `<button class="wcard" data-msg="${esc(hint)}">
       <span class="wcard-icon">${domainIcon[a.domain] || "🤖"}</span>
       <div class="wcard-name">${esc(a.name)}</div>
       <div class="wcard-hint">${esc(hint)}</div>
     </button>`;
   });
-  cards.push(`<button class="wcard" data-msg="Tôi muốn tạo một agent mới">
-    <span class="wcard-icon">✨</span>
-    <div class="wcard-name">Tạo agent mới</div>
-    <div class="wcard-hint">Đại tổng quản phỏng vấn và tạo agent cho bạn</div>
-  </button>`);
+
+  const orRow = active.length ? `
+    <p class="welcome-or">— hoặc chọn nhanh —</p>
+    <div class="welcome-grid">${quickCards.join("")}</div>` : "";
 
   welcome.innerHTML = `
-    <p class="welcome-greeting">Chào ${firstName}! 👋</p>
-    <p class="welcome-sub">Gõ câu hỏi tự nhiên, hoặc chọn một gợi ý bên dưới để bắt đầu nhé</p>
-    <div class="welcome-grid">${cards.join("")}</div>`;
+    <p class="welcome-greeting">Chào ${hello}! 👋</p>
+    <p class="welcome-sub">Đại tổng quản đây — bạn cần gì hôm nay?</p>
+    <div class="welcome-paths">
+      <button class="welcome-path wp-chat">
+        <span class="welcome-path-icon">💬</span>
+        <div class="welcome-path-title">Hỏi bất cứ thứ gì</div>
+        <div class="welcome-path-desc">Cứ gõ tự nhiên — mình tự tìm đúng người giúp bạn</div>
+      </button>
+      <button class="welcome-path wp-create">
+        <span class="welcome-path-icon">✨</span>
+        <div class="welcome-path-title">Đặt trợ lý riêng</div>
+        <div class="welcome-path-desc">Mô tả việc cần → mình tạo chuyên gia ngay tức thì</div>
+      </button>
+    </div>
+    ${orRow}`;
+
   msgs.appendChild(welcome);
 
+  welcome.querySelector(".wp-chat").addEventListener("click", () => {
+    hideWelcome();
+    $("#chat-input").focus();
+  });
+  welcome.querySelector(".wp-create").addEventListener("click", () => {
+    state.stickyAgent = "master";
+    updateChatHeader("master");
+    $("#messages").innerHTML = "";
+    addHandoff("master", "");
+    renderSidebar();
+    $("#chat-input").focus();
+  });
   welcome.querySelectorAll(".wcard").forEach((btn) =>
     btn.addEventListener("click", () => {
       $("#chat-input").value = btn.dataset.msg;
@@ -1160,7 +1185,9 @@ function buildCombinedAttachment() {
   return null;
 }
 
-/* ─── Catalog ───────────────────────────────────────────── */
+/* ─── Catalog (Kho Agent) ───────────────────────────────── */
+let _mpActiveDomain = "";
+
 const STATUS_LABEL = {
   private:        { icon: "🟡", text: "Private — chỉ mình bạn",   cls: "private" },
   pending_review: { icon: "🔵", text: "Đang chờ admin duyệt",    cls: "pending_review" },
@@ -1194,63 +1221,70 @@ function myAgentCard(a) {
     </div>`;
 }
 
+function mpCard(a) {
+  const icon = domainIcon[a.domain] || "🤖";
+  const domainLabel = { legal:"Pháp lý", finance:"Tài chính", sales:"Sales", hr:"Nhân sự", ops:"Vận hành", it:"IT" }[a.domain] || (a.domain || "");
+  const tagline = a.tagline || a.description.split(/[.。]/)[0].slice(0, 90);
+  const callsBit = a.calls >= 5 ? `🔥 ${a.calls} lượt` : a.calls > 0 ? `${a.calls} lượt` : "";
+  const meta = [domainLabel, callsBit].filter(Boolean).join(" · ");
+  const safeTag = esc(tagline);
+  const safeName = esc(a.name);
+  return `<div class="mp-card" onclick="startChatWith('${safeName}','${safeTag}')">
+    <div class="mp-card-icon">${icon}</div>
+    <div class="mp-card-name">${safeName}</div>
+    <div class="mp-card-tagline">${safeTag}</div>
+    <div class="mp-card-footer">
+      <div class="mp-card-meta">${esc(meta)}</div>
+      <button class="btn-talk" onclick="event.stopPropagation();startChatWith('${safeName}','${safeTag}')">Nói chuyện →</button>
+    </div>
+  </div>`;
+}
+
 async function loadCatalog() {
-  const [agents, skills] = await Promise.all([
-    fetch("/agents", { headers: headers() }).then((r) => r.json()),
-    fetch("/skills", { headers: headers() }).then((r) => r.json()),
-  ]);
-  const q      = $("#catalog-search").value.toLowerCase();
-  const domain = $("#catalog-domain").value;
+  try {
+    const agents = await fetch("/agents", { headers: headers() }).then((r) => r.json());
+    const q = ($("#catalog-search")?.value || "").toLowerCase();
+    const domain = _mpActiveDomain;
 
-  const domains = [...new Set([...agents, ...skills].map((x) => x.domain).filter(Boolean))];
-  const sel = $("#catalog-domain"), cur = sel.value;
-  sel.innerHTML = '<option value="">Mọi domain</option>' + domains.map((d) => `<option>${d}</option>`).join("");
-  sel.value = cur;
+    // "Agent của tôi" — draft/pending/rejected của current user
+    const mine = agents.filter((a) => a.created_by === state.userId && a.status !== "public");
+    const mySection = $("#my-agents-section");
+    if (mine.length) {
+      $("#my-agent-list").innerHTML = mine.map(myAgentCard).join("");
+      mySection.hidden = false;
+    } else {
+      mySection.hidden = true;
+    }
 
-  // "Agent của tôi" — draft/pending/rejected của current user
-  const mine = agents.filter((a) => a.created_by === state.userId && a.status !== "public");
-  const mySection = $("#my-agents-section");
-  if (mine.length) {
-    $("#my-agent-list").innerHTML = mine.map(myAgentCard).join("");
-    mySection.hidden = false;
-  } else {
-    mySection.hidden = true;
-  }
+    const match = (a) => (!domain || a.domain === domain) && (!q || (a.name + " " + (a.tagline || "") + " " + a.description).toLowerCase().includes(q));
+    const publicAgents = agents.filter((a) => a.status === "public").filter(match);
 
-  const match = (x) => (!domain || x.domain === domain) && (!q || (x.name + " " + (x.tagline || "") + " " + (x.slug || "") + " " + x.description).toLowerCase().includes(q));
+    // Phổ biến — chỉ hiện khi không filter
+    const featured = publicAgents.filter((a) => a.calls >= 3).sort((a, b) => b.calls - a.calls).slice(0, 4);
+    const mpFeatured = $("#mp-featured");
+    if (mpFeatured) {
+      if (featured.length && !q && !domain) {
+        $("#mp-featured-list").innerHTML = featured.map(mpCard).join("");
+        mpFeatured.hidden = false;
+      } else {
+        mpFeatured.hidden = true;
+      }
+    }
 
-  // Tất cả agents (active + không phải của mình)
-  const publicAgents = agents.filter((a) => a.status === "public" || a.created_by !== state.userId);
-  $("#agent-list").innerHTML = publicAgents.filter(match).map((a) => {
-    const callsStr = a.calls >= 5
-      ? `<span class="calls-badge popular">🔥 ${a.calls} lần</span>`
-      : a.calls > 0
-        ? `<span class="calls-badge">${a.calls} lần</span>`
-        : "";
-    return `<div class="ccard">
-      <div class="ccard-name">
-        ${esc(a.name)} <span class="ccard-slug">@${esc(a.slug || a.name)}</span>
-        <span class="badge ${a.status}">${a.status}</span>
-        ${a.has_pending_changes ? '<span class="badge pending_review">sửa đổi chờ duyệt</span>' : ""}
-        ${callsStr}
-      </div>
-      <div class="ccard-desc">${esc(a.tagline || a.description.split(/[.。]/)[0].slice(0, 100))}</div>
-      <div class="ccard-meta">domain: ${a.domain || "—"} · skills: ${a.skills.join(", ") || "—"}</div>
-    </div>`;
-  }).join("") || '<div class="empty">Chưa có agent nào đang active</div>';
-
-  $("#skill-list").innerHTML = skills.filter(match).map((s) => `
-    <div class="ccard">
-      <div class="ccard-name">
-        ${esc(s.name)}
-        <span class="badge ${s.status}">${s.status} v${s.version}</span>
-      </div>
-      <div class="ccard-desc">${esc(s.description)}</div>
-      <div class="ccard-meta">domain: ${s.domain || "—"} · tạo bởi: ${s.created_by || "—"}</div>
-    </div>`).join("") || '<div class="empty">Chưa có skill</div>';
+    $("#agent-list").innerHTML = publicAgents.map(mpCard).join("")
+      || '<div class="empty">Chưa có agent nào phù hợp</div>';
+  } catch (_) {}
 }
 $("#catalog-search").addEventListener("input", loadCatalog);
-$("#catalog-domain").addEventListener("change", loadCatalog);
+
+// mp-cats (category pills)
+document.querySelectorAll(".mp-cat").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    _mpActiveDomain = btn.dataset.domain;
+    document.querySelectorAll(".mp-cat").forEach((b) => b.classList.toggle("active", b === btn));
+    loadCatalog();
+  });
+});
 
 /* ─── Review ────────────────────────────────────────────── */
 async function loadReview() {

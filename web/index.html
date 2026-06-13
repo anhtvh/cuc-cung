@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Agent Hub — AI agent cho doanh nghiệp</title>
-  <link rel="stylesheet" href="style.css?v=20260613b">
+  <link rel="stylesheet" href="style.css?v=20260613c">
 </head>
 <body>
 
@@ -18,7 +18,7 @@
   <nav>
     <button class="tab active" data-tab="home">Trang chủ</button>
     <button class="tab" data-tab="chat">Chat</button>
-    <button class="tab" data-tab="catalog">Catalog</button>
+    <button class="tab" data-tab="catalog">Kho Agent</button>
     <button class="tab" data-tab="review" id="review-tab" hidden>Review</button>
     <button class="tab" data-tab="stats" id="stats-tab" hidden>Stats</button>
   </nav>
@@ -38,68 +38,28 @@
   <section id="panel-home" class="panel active">
 
     <div class="home-hero">
-      <div class="hero-badge">✦ Claw-a-thon 2026</div>
-      <h1>AI agent chuyên biệt<br>cho mọi <em>nghiệp vụ</em></h1>
-      <p>Chỉ cần mô tả nhu cầu bằng lời — hệ thống tự tìm đúng người giỏi nhất giúp bạn. Hoặc tạo hẳn một agent riêng, chỉ qua trò chuyện thôi.</p>
-      <div class="hero-actions">
-        <button class="btn-cta" onclick="switchTab('chat')">Bắt đầu chat →</button>
-        <button class="btn-ghost" onclick="switchTab('catalog')">Xem catalog</button>
+      <div class="hero-badge">✦ Đại tổng quản</div>
+      <h1>Hỏi gì cũng có,<br>muốn gì cũng <em>tạo được</em></h1>
+      <p>Gặp AI biết tuốt — tự tìm đúng người giúp bạn, hoặc tạo hẳn một trợ lý riêng chỉ qua trò chuyện. Cho cá nhân hay cả team đều được.</p>
+      <div class="path-cards">
+        <div class="path-card path-chat" onclick="switchTab('chat')">
+          <div class="path-icon">💬</div>
+          <div class="path-title">Hỏi bất cứ thứ gì</div>
+          <div class="path-desc">Pháp lý, tài chính, hợp đồng, ý tưởng, kế hoạch... Cứ gõ tự nhiên — hệ thống tự tìm đúng người giúp bạn.</div>
+          <div class="path-cta">Bắt đầu hỏi →</div>
+        </div>
+        <div class="path-card path-create" onclick="openQuickCreate()">
+          <div class="path-icon">✨</div>
+          <div class="path-title">Đặt trợ lý riêng</div>
+          <div class="path-desc">Mô tả việc bạn cần — Đại tổng quản phỏng vấn và tạo agent chuyên biệt ngay. Dùng một mình hoặc chia sẻ cả nhóm.</div>
+          <div class="path-cta">Tạo ngay →</div>
+        </div>
       </div>
     </div>
 
     <div class="home-section">
-      <div class="section-label">Tính năng</div>
-      <div class="section-title">Mọi thứ bạn cần trong một nền tảng</div>
-      <div class="section-sub">Từ routing thông minh đến governance đầy đủ</div>
-      <div class="feat-grid">
-        <div class="feat-card">
-          <div class="feat-icon blue">🎯</div>
-          <div class="feat-title">Tự động điều phối</div>
-          <div class="feat-desc">Bạn chỉ cần nói nhu cầu — hệ thống tự hiểu và kết nối với agent phù hợp nhất, không cần biết tên agent.</div>
-        </div>
-        <div class="feat-card">
-          <div class="feat-icon purple">📄</div>
-          <div class="feat-title">Đính kèm tài liệu</div>
-          <div class="feat-desc">Gửi PDF, DOCX, TXT hay ảnh scan trực tiếp vào chat. Agent đọc và xử lý ngay trong hội thoại.</div>
-        </div>
-        <div class="feat-card">
-          <div class="feat-icon green">✨</div>
-          <div class="feat-title">Tạo & chia sẻ agent</div>
-          <div class="feat-desc">Chat với Đại tổng quản để tạo agent riêng. Khi ưng ý, submit một cái là cả team dùng được — không cần code.</div>
-        </div>
-        <div class="feat-card">
-          <div class="feat-icon yellow">✅</div>
-          <div class="feat-title">Duyệt trước khi dùng</div>
-          <div class="feat-desc">Mọi agent mới đều qua admin review trước khi được chia sẻ. Đảm bảo chất lượng, không lo rủi ro.</div>
-        </div>
-        <div class="feat-card">
-          <div class="feat-icon cyan">💬</div>
-          <div class="feat-title">Nhớ ngữ cảnh</div>
-          <div class="feat-desc">Mỗi agent nhớ lịch sử trò chuyện của bạn — không cần giải thích lại từ đầu mỗi lần.</div>
-        </div>
-        <div class="feat-card">
-          <div class="feat-icon red">🔌</div>
-          <div class="feat-title">Kết nối dữ liệu thật</div>
-          <div class="feat-desc">Agent tra cứu hợp đồng, tài liệu nội bộ qua connector thật — không phải trả lời đoán mò.</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Quick-create banner -->
-    <div class="qc-banner">
-      <div class="qc-banner-inner">
-        <div class="qc-banner-text">
-          <h3>⚡ Tạo agent mới trong 3 bước</h3>
-          <p>Điền thông tin, upload quy trình, xác nhận — Đại tổng quản lo phần còn lại. Tạo xong, submit là cả team dùng được!</p>
-        </div>
-        <button class="btn-cta-sm" onclick="openQuickCreate()">Bắt đầu ngay →</button>
-      </div>
-    </div>
-
-    <div class="home-section">
-      <div class="section-label">Agents</div>
-      <div class="section-title">Sẵn sàng phục vụ</div>
-      <div class="section-sub">Click để bắt đầu hội thoại ngay</div>
+      <div class="section-title">Trợ lý có sẵn</div>
+      <div class="section-sub">Chọn một cái để bắt đầu — hoặc cứ hỏi tự nhiên, hệ thống tự tìm người phù hợp</div>
       <div class="home-filter-row">
         <input class="home-search-input" id="home-search" placeholder="Tìm agent…" autocomplete="off">
         <div class="home-domain-tabs" id="home-domain-tabs">
@@ -115,28 +75,6 @@
       <div id="home-agent-grid" class="agent-row"></div>
     </div>
 
-    <div class="home-section">
-      <div class="section-label">Hướng dẫn</div>
-      <div class="section-title">Bắt đầu trong 3 bước</div>
-      <div class="section-sub">Không cần cài đặt, không cần training</div>
-      <div class="steps">
-        <div class="step">
-          <div class="step-num">01 — Hỏi</div>
-          <h3>Cứ nói như bình thường</h3>
-          <p>Gõ tiếng Việt, không cần biết agent nào đang chạy. Hệ thống tự hiểu và tìm đúng người giúp bạn.</p>
-        </div>
-        <div class="step">
-          <div class="step-num">02 — Nhận kết quả</div>
-          <h3>Agent chuyên biệt xử lý</h3>
-          <p>Agent tra cứu dữ liệu thật, áp quy trình chuẩn và trả lời đúng nghiệp vụ của bạn.</p>
-        </div>
-        <div class="step">
-          <div class="step-num">03 — Chia sẻ</div>
-          <h3>Tạo và chia sẻ agent mới</h3>
-          <p>Chat với Đại tổng quản để tạo agent riêng. Khi hài lòng, submit để admin duyệt — sau đó cả team đều dùng được.</p>
-        </div>
-      </div>
-    </div>
 
   </section>
 
@@ -193,18 +131,32 @@
   <!-- ─── CATALOG ──────────────────────────────────────── -->
   <section id="panel-catalog" class="panel">
     <div class="inner">
-      <div class="search-row">
-        <input class="search-input" id="catalog-search" placeholder="Tìm agent hoặc skill…">
-        <select class="search-select" id="catalog-domain"><option value="">Mọi domain</option></select>
+      <div class="mp-header">
+        <h2 class="mp-title">Kho Agent</h2>
+        <p class="mp-sub">Chọn trợ lý phù hợp — hoặc <button class="link-btn-inline" onclick="openQuickCreate()">đặt agent riêng của bạn</button></p>
+      </div>
+      <input class="search-input mp-search" id="catalog-search" placeholder="🔍  Tìm theo tên hoặc mô tả…">
+      <div class="mp-cats" id="mp-cats">
+        <button class="mp-cat active" data-domain="">Tất cả</button>
+        <button class="mp-cat" data-domain="legal">⚖️ Pháp lý</button>
+        <button class="mp-cat" data-domain="finance">💰 Tài chính</button>
+        <button class="mp-cat" data-domain="sales">📊 Sales</button>
+        <button class="mp-cat" data-domain="hr">👥 Nhân sự</button>
+        <button class="mp-cat" data-domain="ops">⚙️ Vận hành</button>
+        <button class="mp-cat" data-domain="it">💻 IT</button>
       </div>
       <div id="my-agents-section" hidden>
         <div class="section-head">Agent của tôi</div>
         <div id="my-agent-list" class="cards-grid"></div>
       </div>
-      <div class="section-head">Tất cả agents</div>
-      <div id="agent-list" class="cards-grid"></div>
-      <div class="section-head">Skills</div>
-      <div id="skill-list" class="cards-grid"></div>
+      <div id="mp-featured" hidden>
+        <div class="section-head">🔥 Phổ biến</div>
+        <div id="mp-featured-list" class="mp-grid"></div>
+      </div>
+      <div id="mp-all">
+        <div class="section-head">Tất cả agent</div>
+        <div id="agent-list" class="mp-grid"></div>
+      </div>
     </div>
   </section>
 
@@ -357,6 +309,6 @@
   </div>
 </div>
 
-<script src="app.js?v=20260613b"></script>
+<script src="app.js?v=20260613c"></script>
 </body>
 </html>
