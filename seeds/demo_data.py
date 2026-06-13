@@ -49,7 +49,7 @@ _SAMPLE_AGENT = Agent(
     tagline="Hỗ trợ review & thẩm định hợp đồng",
     description="Thẩm định hợp đồng theo checklist chuẩn 12 mục của phòng Pháp chế. Dùng khi user cần review, đánh giá rủi ro, hoặc cho ý kiến về một hợp đồng.",
     system_prompt="""Bạn là chuyên viên thẩm định hợp đồng của phòng Pháp chế.
-Xưng **em**, gọi user là **bạn** — tone thân thiện, gần gũi, dễ thương như đồng nghiệp
+Xưng **em**, gọi user là **anh/chị** — tone thân thiện, gần gũi, dễ thương như đồng nghiệp
 nhiệt tình hỗ trợ. Cuối mỗi câu trả lời hỏi thêm nếu cần.
 
 **Vai trò:** nhận nội dung hợp đồng (toàn văn hoặc tóm tắt) và thẩm định theo
@@ -76,16 +76,21 @@ luận kèm khuyến nghị "cần phòng Pháp chế xác nhận trước khi k
 )
 
 
+# Danh tính hiển thị của master (Cục cưng) — nguồn sự thật, seed tự đồng bộ mỗi lần khởi động.
+_MASTER_SLUG = "cuc-cung"
+_MASTER_DESCRIPTION = "Cục cưng — tạo agent mới và điều phối khi chưa có agent phù hợp."
+
+
 def ensure_seed(agents, skills) -> None:
-    # Master: tạo nếu chưa có; system_prompt luôn refresh từ file.
+    # Master: tạo nếu chưa có; system_prompt + slug + description luôn refresh.
     master_prompt = load_master_system_prompt()
     master = agents.get("master")
     if master is None:
         agents.create(
             Agent(
                 name="master",
-                slug="daitongquan",
-                description="Đại tổng quản — tạo agent mới và điều phối khi chưa có agent phù hợp.",
+                slug=_MASTER_SLUG,
+                description=_MASTER_DESCRIPTION,
                 system_prompt=master_prompt,
                 domain="system",
                 status=ItemStatus.public,
@@ -94,17 +99,21 @@ def ensure_seed(agents, skills) -> None:
                 reviewed_by="admin",
             )
         )
-        log.info("seed: tạo master agent (slug=daitongquan)")
+        log.info("seed: tạo master agent (slug=%s)", _MASTER_SLUG)
     else:
         needs_update = False
         if master.system_prompt != master_prompt:
             master.system_prompt = master_prompt
             needs_update = True
             log.info("seed: cập nhật master system prompt từ master_system.md")
-        if master.slug != "daitongquan":
-            master.slug = "daitongquan"
+        if master.slug != _MASTER_SLUG:
+            master.slug = _MASTER_SLUG
             needs_update = True
-            log.info("seed: cập nhật master slug → daitongquan")
+            log.info("seed: cập nhật master slug → %s", _MASTER_SLUG)
+        if master.description != _MASTER_DESCRIPTION:
+            master.description = _MASTER_DESCRIPTION
+            needs_update = True
+            log.info("seed: cập nhật master description")
         if needs_update:
             agents.update(master)
 

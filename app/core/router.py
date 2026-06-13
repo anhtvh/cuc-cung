@@ -15,6 +15,11 @@ log = logging.getLogger(__name__)
 _MENTION_RE = re.compile(r"(?<!\w)@([a-z][a-z0-9-]{1,63})\b")
 _PROMPT_PATH = Path(__file__).parent / "prompts" / "router_system.md"
 _SCHEMA_HINT = '{"agent_name": "string hoặc null", "confidence": "high|medium|low"}'
+# Marker do chat_engine sinh khi agent con gọi tool `escalate`:
+#   "[Escalated từ @<TênAgent>: <lý do>]\n\n<nội dung gốc>"
+# Marker chứa @<TênAgent> → nếu không chặn sớm, bước @mention bên dưới bắt nhầm và route
+# NGƯỢC về chính agent vừa escalate (loop) thay vì về Master. Phải đồng bộ với chat_engine.
+_ESCALATION_MARKER_PREFIX = "[Escalated từ "
 
 
 class IntentRouter:
@@ -25,12 +30,18 @@ class IntentRouter:
         self._prompt_template = _PROMPT_PATH.read_text(encoding="utf-8")
 
     def route(self, user_id: str, message: str, agent_name: str | None = None) -> RouteDecision:
+        # 0. Escalation: message do agent con escalate LUÔN về Master để tìm người phù hợp.
+        #    Phải chặn TRƯỚC bước @mention — nếu không, @<TênAgent> trong marker bị bắt nhầm
+        #    → route ngược về chính agent vừa escalate (bug loop, agent trả lời ngoài scope).
+        if message.lstrip().startswith(_ESCALATION_MARKER_PREFIX):
+            return RouteDecision(agent_name=MASTER_AGENT_NAME, routed_by="escalate")
+
         candidates = {a.name: a for a in self._governance.visible_agents(user_id)}
         slug_map = {a.slug: a for a in candidates.values() if a.slug}
         # name_map: nhận diện mention theo TÊN hiển thị (có dấu/dấu cách) — UI có thể gửi
         # "@Bé Gà" thay vì "@be-ga"; key lowercase để match case-insensitive.
         name_map = {a.name.lower(): a for a in candidates.values()}
-        # Thêm master vào slug_map để @daitongquan (và slug custom bất kỳ) → master
+        # Thêm master vào slug_map để @cuc-cung (và slug custom bất kỳ) → master
         _master = self._governance._agents.get(MASTER_AGENT_NAME)
         if _master and _master.slug and _master.slug not in slug_map:
             slug_map[_master.slug] = _master

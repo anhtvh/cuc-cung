@@ -225,7 +225,7 @@ function renderHomeAgents() {
     <div class="ahc new-card" onclick="startBuilderChat()">
       <span class="ahc-icon">✨</span>
       <div class="ahc-name">Tạo agent mới</div>
-      <div class="ahc-desc">Chat với Đại tổng quản để tạo agent chuyên biệt theo nghiệp vụ của bạn — không cần code.</div>
+      <div class="ahc-desc">Chat với Cục cưng để tạo agent chuyên biệt theo nghiệp vụ của bạn — không cần code.</div>
       <div class="ahc-tag"><span class="tag" style="color:#a5b4fc;background:rgba(99,102,241,.12)">builder</span></div>
     </div>`);
 
@@ -312,7 +312,7 @@ async function showWelcome() {
 
   welcome.innerHTML = `
     <p class="welcome-greeting">Chào ${hello}! 👋</p>
-    <p class="welcome-sub">Đại tổng quản đây — bạn cần gì hôm nay?</p>
+    <p class="welcome-sub">Cục cưng đây — bạn cần gì hôm nay?</p>
     <div class="welcome-paths">
       <button class="welcome-path wp-chat">
         <span class="welcome-path-icon">💬</span>
@@ -495,10 +495,10 @@ function addHandoff(name, description) {
   const card = document.createElement("div");
   card.className = "handoff-card";
   card.innerHTML = `
-    <div class="handoff-title">${isMaster ? "✨ Đại tổng quản" : "👋 " + esc(name)}</div>
+    <div class="handoff-title">${isMaster ? "✨ Cục cưng" : "👋 " + esc(name)}</div>
     <div class="handoff-body">${
       isMaster
-        ? "Chào bạn! Mình là <strong>Đại tổng quản</strong> — mình có thể giúp bạn tìm agent có sẵn hoặc tạo một agent chuyên biệt riêng. Bạn đang cần gì vậy? 😊"
+        ? "Chào bạn! Mình là <strong>Cục cưng</strong> — mình có thể giúp bạn tìm agent có sẵn hoặc tạo một agent chuyên biệt riêng. Bạn đang cần gì vậy? 😊"
         : `Chào bạn! Em là <strong>${esc(name)}</strong>${short ? " — " + esc(short) : ""}. Cứ hỏi thoải mái, em ở đây rồi 😊`
     }</div>
     ${statusBadge}`;
@@ -593,7 +593,7 @@ async function _triggerAgentAutoStart(agentName, slug) {
     if (_pendingDelegate) {
       const { agent_name, message: delegateMsg } = _pendingDelegate;
       _pendingDelegate = null;
-      addMsg("tool-note", `↩ Đang nhờ Đại tổng quản tìm người phù hợp hơn…`);
+      addMsg("tool-note", `↩ Đang nhờ Cục cưng tìm người phù hợp hơn…`);
       await new Promise((r) => setTimeout(r, 300));
       await refreshAgentsCache();
       state.stickyAgent = agent_name;
@@ -677,7 +677,7 @@ async function restoreConv(key) {
             div.appendChild(mc);
             msgs.appendChild(div);
           } else if (msg.role === "assistant") {
-            const tag = agentName === "master" ? "Đại tổng quản" : "@" + agentName;
+            const tag = agentName === "master" ? "Cục cưng" : "@" + agentName;
             const div = addMsg("assistant", "", tag);
             div.querySelector(".msg-content").innerHTML = renderMarkdown(msg.content);
           }
@@ -733,7 +733,7 @@ function updateChatHeader(agentName) {
   if (agentName === "master") {
     avatar.textContent = "Đ";
     avatar.className   = "chd-avatar chd-avatar-master";
-    nameEl.textContent = "Đại tổng quản";
+    nameEl.textContent = "Cục cưng";
     subEl.textContent  = "Tạo agent mới hoặc kết nối bạn với đúng chuyên gia — cứ chat tự nhiên nhé 😊";
     return;
   }
@@ -756,7 +756,7 @@ function renderSidebar() {
   list.innerHTML = entries.map((e) => {
     const isActive   = e.key === currentKey;
     const agentName  = e.agentName;
-    const displayName = !agentName ? "Tự điều phối" : agentName === "master" ? "Đại tổng quản" : agentName;
+    const displayName = !agentName ? "Tự điều phối" : agentName === "master" ? "Cục cưng" : agentName;
     const convTitle   = e.title || displayName;
     const firstChar   = !agentName ? "✦" : agentName[0].toUpperCase();
     const domain = e.agentMeta?.domain || (agentName === "master" ? "master" : !agentName ? "auto" : "default");
@@ -1151,7 +1151,7 @@ $("#chat-form").addEventListener("submit", async (e) => {
         } else if (ev === "delta") {
           hideTyping();
           if (!assistantDiv) {
-            const tag = state.stickyAgent === "master" ? "Đại tổng quản" : "@" + state.stickyAgent;
+            const tag = state.stickyAgent === "master" ? "Cục cưng" : "@" + state.stickyAgent;
             assistantDiv = addMsg("assistant", "", tag);
           }
           assistantText += data.text;
@@ -1173,7 +1173,7 @@ $("#chat-form").addEventListener("submit", async (e) => {
           } else {
             // Agent thường: gom vào accordion "quá trình xử lý", giữ NGUYÊN 1 bubble cho cả lượt
             if (!assistantDiv) {
-              const tag = state.stickyAgent === "master" ? "Đại tổng quản" : "@" + state.stickyAgent;
+              const tag = state.stickyAgent === "master" ? "Cục cưng" : "@" + state.stickyAgent;
               assistantDiv = addMsg("assistant", "", tag);
             }
             // Narration trước khi gọi tool = "suy nghĩ" → gấp vào quá trình, không lẫn vào kết quả
@@ -1252,7 +1252,7 @@ $("#chat-form").addEventListener("submit", async (e) => {
 
       if (isEscalation) {
         // Escalation từ agent con: hiện toast để user biết chuyện gì đang xảy ra
-        addMsg("tool-note", `↩ Đang nhờ Đại tổng quản tìm người phù hợp hơn…`);
+        addMsg("tool-note", `↩ Đang nhờ Cục cưng tìm người phù hợp hơn…`);
       }
 
       await new Promise((r) => setTimeout(r, isEscalation ? 300 : 500));
@@ -1721,7 +1721,7 @@ function highlightMentionsHtml(text) {
   return esc(text).replace(/@([a-z][a-z0-9-]*)/g, (_, slug) => {
     const isMaster = slug === "daitongquan" || slug === "master";
     const a = isMaster ? null : _agentsCache.find(x => x.slug === slug);
-    const display = isMaster ? "Đại tổng quản" : (a?.name || slug);
+    const display = isMaster ? "Cục cưng" : (a?.name || slug);
     return `<span class="mention-tag">@${esc(display)}</span>`;
   });
 }
@@ -1851,7 +1851,7 @@ function selectMention(name) {
 }
 
 const _MASTER_MENTION_ENTRY = {
-  name: "Đại tổng quản", slug: "daitongquan",
+  name: "Cục cưng", slug: "daitongquan",
   description: "Tạo agent mới hoặc kết nối bạn với đúng chuyên gia",
   domain: "master", status: "public",
 };
@@ -1887,7 +1887,7 @@ function promptLoginForCreate() {
   showToast("Đăng nhập để tạo trợ lý riêng nhé! 😊");
 }
 
-// Vào luồng tạo agent qua chat với Đại tổng quản — guest phải đăng nhập trước.
+// Vào luồng tạo agent qua chat với Cục cưng — guest phải đăng nhập trước.
 window.startBuilderChat = function () {
   if (!state.user) { promptLoginForCreate(); return; }
   startChatWith("master", "");

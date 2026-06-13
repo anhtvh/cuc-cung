@@ -49,6 +49,18 @@ def contains_secret(text: str) -> bool:
 _AGENT_EDITABLE = {"description", "system_prompt", "connectors", "domain", "visibility", "escalate_enabled", "tagline"}
 _SKILL_EDITABLE = {"description", "content", "domain"}
 
+# Field editable nào là enum → coerce string thô (từ pending_changes JSON / API body) về
+# enum trước khi setattr. Nếu không, gán str vào field Pydantic enum → repo.update gọi
+# `a.visibility.value` sẽ raise AttributeError ('str' object has no attribute 'value').
+_ENUM_FIELDS = {"visibility": Visibility}
+
+
+def _coerce_field(key: str, value: Any) -> Any:
+    enum_cls = _ENUM_FIELDS.get(key)
+    if enum_cls is not None and not isinstance(value, enum_cls):
+        return enum_cls(value)
+    return value
+
 
 class Governance:
     """Service dùng chung cho builder handlers và API review."""
@@ -293,7 +305,7 @@ class Governance:
         else:  # draft | rejected → sửa trực tiếp, quay về draft
             self._validate_merged(kind, item, fields)
             for k, v in fields.items():
-                setattr(item, k, v)
+                setattr(item, k, _coerce_field(k, v))  # coerce enum (vd visibility) tránh gán str
             item.status = ItemStatus.private
             item.review_note = None
         # L-11: updated_at set 1 lần duy nhất trong repo.update() — không set lại ở đây
@@ -334,6 +346,14 @@ class Governance:
                 f"Agent '{name}' chưa gắn skill nào — mọi agent con phải có ≥1 skill để chuẩn hoá "
                 "quy trình/nguyên tắc làm việc. Tạo skill (create_skill) rồi gắn (attach_skill) trước khi submit."
             )
+        # Fix nghịch lý #3: submit duyệt = ý định CHIA SẺ công ty. Nếu agent đang
+        # visibility=private (vd master tạo mặc định private), nâng lên company — nếu không,
+        # sau approve agent thành public+private → KHÔNG ai khác thấy, maker-checker vô nghĩa
+        # và lời hứa "cả công ty thấy" sai. Lúc pending vẫn chỉ owner dùng (status≠public),
+        # nên không lộ sớm. Use-case "tạm ẩn" (public→private) là hành động sau approve, không đụng.
+        if kind == "agent" and item.visibility == Visibility.private:
+            item.visibility = Visibility.company
+            log.info("submit_for_review: nâng visibility private→company cho agent '%s' (ý định chia sẻ)", name)
         item.status = ItemStatus.pending_review
         repo = self._agents if kind == "agent" else self._skills
         return repo.update(item)
@@ -357,7 +377,7 @@ class Governance:
         # Trường hợp 1: item active có pending_changes → áp dụng bản chờ duyệt (Flow 4).
         if item.status == ItemStatus.public and item.pending_changes:
             for k, v in item.pending_changes.items():
-                setattr(item, k, v)
+                setattr(item, k, _coerce_field(k, v))  # coerce enum (vd visibility) tránh gán str
             item.pending_changes = None
             if kind == "skill":
                 item.version += 1  # MỌI agent gắn nó nhận bản mới (đã qua duyệt)

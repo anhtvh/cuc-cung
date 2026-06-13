@@ -20,6 +20,9 @@ dependencies = [
     "ddgs>=9.0",
     "PyJWT>=2.8",
     "passlib[bcrypt]>=1.7",
+    # bcrypt phải <4.1: passlib 1.7.4 đọc bcrypt.__about__.__version__ (đã bị bỏ từ 4.1)
+    # và bcrypt 5.x làm detect_wrap_bug raise → app crash khi hash/verify password.
+    "bcrypt>=4.0,<4.1",
 ]
 
 [project.optional-dependencies]

@@ -32,6 +32,17 @@ def test_mention_routes_by_slug(agents, governance, fake_llm):
     assert (d.agent_name, d.routed_by) == ("ThamDinhHopDong", "mention")
 
 
+def test_escalation_marker_always_routes_to_master(agents, governance, fake_llm):
+    """Regression bug escalate-loop: marker '[Escalated từ @X: ...]' chứa @X — KHÔNG được
+    để bước @mention bắt nhầm route ngược về X; escalation luôn về master."""
+    router = _setup(agents, governance, fake_llm)
+    msg = "[Escalated từ @ThamDinhHopDong: ngoài phạm vi]\n\ncho tôi công thức nấu phở"
+    # kể cả khi UI gửi kèm sticky agent_name = chính agent đó
+    d = router.route("user1", msg, agent_name="ThamDinhHopDong")
+    assert (d.agent_name, d.routed_by) == ("master", "escalate")
+    assert fake_llm.classify_calls == []  # chặn sớm, không tốn call
+
+
 def test_mention_unknown_slug_routes_to_master_with_note(agents, governance, fake_llm):
     """@mention slug không tồn tại → về master kèm note (không expose classify)."""
     router = _setup(agents, governance, fake_llm)

@@ -20,6 +20,45 @@ def test_full_lifecycle_private_to_public(governance, agents, skills):
     assert agents.get("TestAgent").status == ItemStatus.public
 
 
+def test_edit_visibility_on_draft_no_crash(governance, agents):
+    """Regression Bug#2: sửa visibility agent draft phải coerce enum, không gán str (repo.update nổ .value)."""
+    from app.core.models import Visibility
+    agents.create(make_agent(visibility=Visibility.private))
+    governance.propose_update("agent", "TestAgent", {"visibility": "company"}, "maker")
+    got = agents.get("TestAgent")
+    assert got.visibility == Visibility.company
+    assert isinstance(got.visibility, Visibility)  # KHÔNG phải str
+
+
+def test_approve_visibility_pending_change_no_crash(governance, agents):
+    """Regression Bug#2: approve pending_changes chứa visibility (str) phải coerce về enum."""
+    from app.core.models import Visibility
+    agents.create(make_agent(status=ItemStatus.public, visibility=Visibility.private))
+    governance.propose_update("agent", "TestAgent", {"visibility": "company"}, "maker")
+    assert agents.get("TestAgent").pending_changes == {"visibility": "company"}
+    governance.approve("agent", "TestAgent", "admin")
+    got = agents.get("TestAgent")
+    assert got.visibility == Visibility.company
+    assert isinstance(got.visibility, Visibility)
+    assert got.pending_changes is None
+
+
+def test_submit_promotes_private_agent_to_company(governance, agents, skills):
+    """Regression #3: submit agent visibility=private → nâng company (submit = ý định chia sẻ);
+    sau approve người khác phải dùng được, không kẹt public+private."""
+    from app.core.models import Visibility
+    agents.create(make_agent(visibility=Visibility.private))
+    attach_test_skill(agents, skills)
+    governance.submit_for_review("agent", "TestAgent", "maker")
+    assert agents.get("TestAgent").visibility == Visibility.company  # đã nâng khi submit
+    governance.submit_for_review("skill", "test-skill-mot", "maker")
+    governance.approve("skill", "test-skill-mot", "admin")
+    governance.approve("agent", "TestAgent", "admin")
+    approved = agents.get("TestAgent")
+    assert approved.status == ItemStatus.public and approved.visibility == Visibility.company
+    assert governance.can_use_agent(approved, "nguoi-khac") is True  # cả công ty thấy
+
+
 def test_submit_only_from_private(governance, agents):
     agents.create(make_agent(status=ItemStatus.public))
     with pytest.raises(GovernanceError, match="private"):
