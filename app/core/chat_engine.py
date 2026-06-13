@@ -349,6 +349,7 @@ class ChatEngine:
                             "name": to_display(ev.name),
                             "input": ev.input,
                             "is_error": ev.result.is_error,
+                            "output": ev.result.display_output,
                         },
                     }
                     if ev.result.delegate_to:

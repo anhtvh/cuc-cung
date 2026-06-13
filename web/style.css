@@ -1529,3 +1529,49 @@ main { flex: 1; overflow: hidden; display: flex; min-height: 0; }
   padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,.04); color: var(--tx2);
 }
 .stats-table tr:hover td { background: rgba(255,255,255,.03); }
+
+/* ─── Sub-agent card (orchestration) ──────────────────────── */
+.subagent-card {
+  margin: 6px 0;
+  border: 1px solid rgba(99,102,241,.25);
+  border-left: 3px solid #6366f1;
+  border-radius: var(--r);
+  background: rgba(99,102,241,.06);
+  overflow: hidden;
+  max-width: 680px;
+}
+.subagent-card-error {
+  border-color: rgba(239,68,68,.25);
+  border-left-color: var(--red);
+  background: rgba(239,68,68,.05);
+}
+.sac-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  background: rgba(99,102,241,.08);
+  border-bottom: 1px solid rgba(99,102,241,.15);
+  font-size: 12px;
+}
+.subagent-card-error .sac-header {
+  background: rgba(239,68,68,.08);
+  border-bottom-color: rgba(239,68,68,.15);
+}
+.sac-icon { font-size: 15px; }
+.sac-name { font-weight: 700; color: #a5b4fc; font-size: 12px; }
+.sac-label { color: var(--tx3); font-size: 11px; }
+.sac-err-badge {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--red);
+  border: 1px solid rgba(239,68,68,.35);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.sac-body {
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--tx2);
+  line-height: 1.65;
+}

@@ -28,6 +28,7 @@ class ToolResult:
     is_error: bool = False
     delegate_to: str | None = None       # agent name để auto-handoff
     delegate_message: str | None = None  # message gốc chuyển sang agent
+    display_output: str | None = None    # output hiển thị UI (orchestration sub-agent card)
 
 
 # executor nhận (tool_name, args) → ToolResult; lỗi tool trả is_error=True

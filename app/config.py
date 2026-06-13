@@ -58,6 +58,12 @@ class Settings(BaseSettings):
     builder_enabled: bool = True
     min_prompt_length: int = 200
 
+    # --- Orchestration (multi-agent) ---
+    # Số lần run_agent tối đa / 1 lượt Master (cap credit)
+    orchestration_max_agents: int = 4
+    # Tool rounds tối đa mỗi sub-agent trong orchestration
+    orchestration_sub_rounds: int = 3
+
     # --- Self-test (HM3/HM4) ---
     # Tắt khi demo live để tiết kiệm credit: SELF_TEST_ENABLED=false
     self_test_enabled: bool = True

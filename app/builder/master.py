@@ -167,6 +167,23 @@ MASTER_TOOLS: list[ToolDef] = [
         },
     ),
     ToolDef(
+        name="run_agent",
+        description=(
+            "Chạy một agent chuyên biệt với task cụ thể và NHẬN LẠI kết quả — "
+            "khác delegate_to_agent (chuyển hẳn): run_agent trả output về cho bạn để phối hợp tiếp. "
+            "Dùng khi cần nhiều agent phối hợp hoặc output agent này là input agent kia. "
+            "Gọi tuần tự: run_agent(A) → đọc kết quả → run_agent(B, task kèm output A) → tổng hợp."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "agent_name": {"type": "string", "description": "Tên agent cần chạy"},
+                "task": {"type": "string", "description": "Nhiệm vụ cụ thể (kèm dữ liệu từ agent trước nếu có)"},
+            },
+            "required": ["agent_name", "task"],
+        },
+    ),
+    ToolDef(
         name="self_test_agent",
         description=(
             "Chạy self-test agent vừa tạo — sandbox không ghi memory, judge bằng model rẻ. "
@@ -220,14 +237,18 @@ def _ok(payload: Any) -> ToolResult:
 class MasterToolset:
     """Bộ tool quản trị của master, bound theo user đang chat (quyền sở hữu Flow 2)."""
 
-    def __init__(self, agents, skills, governance: Governance, catalog, user_id: str, usage=None, tester=None):
+    def __init__(self, agents, skills, governance: Governance, catalog, user_id: str, usage=None, tester=None, engine=None):
         self._agents = agents
         self._skills = skills
         self._gov = governance
         self._catalog = catalog
         self._usage = usage
         self._user_id = user_id
-        self._tester = tester  # AgentTester | None (HM3)
+        self._tester = tester      # AgentTester | None (HM3)
+        self._engine = engine      # ChatEngine | None (orchestration)
+        self._orchestration_count = 0  # đếm per-request, reset tự nhiên mỗi request mới
+        self._max_agents = 4           # override từ chat.py theo settings
+        self._sub_rounds = 3           # tool rounds mỗi sub-agent
 
     def execute(self, name: str, args: dict[str, Any]) -> ToolResult:
         handler = getattr(self, f"_h_{name}", None)
@@ -521,6 +542,37 @@ class MasterToolset:
                 if remaining:
                     extra += f" LƯU Ý: skill {remaining} chưa submit được (không có quyền) — yêu cầu người tạo submit riêng."
         return _ok({"submitted": name, "kind": kind, "status": item.status.value, "note": "Chờ admin duyệt." + extra})
+
+    def _h_run_agent(self, args: dict) -> ToolResult:
+        if self._engine is None:
+            return ToolResult(content="Orchestration chưa được bật (engine=None).", is_error=True)
+        if self._orchestration_count >= self._max_agents:
+            return ToolResult(
+                content=f"Đã chạy tối đa {self._max_agents} agent trong lượt này — tổng hợp kết quả và trả lời user ngay.",
+                is_error=True,
+            )
+        agent_name = str(args["agent_name"])
+        task = str(args["task"])
+        if agent_name == MASTER_AGENT_NAME:
+            return ToolResult(content="Không thể run_agent chính Master — gọi delegate_to_agent nếu muốn chuyển.", is_error=True)
+        agent = self._agents.get(agent_name)
+        if agent is None or not self._gov.can_use_agent(agent, self._user_id):
+            return ToolResult(content=f"Agent '{agent_name}' không tồn tại hoặc bạn không có quyền dùng.", is_error=True)
+
+        self._orchestration_count += 1
+        output = self._engine.run_once(
+            user_id=self._user_id,
+            agent=agent,
+            message=task,
+            max_tool_rounds=self._sub_rounds,
+        )
+        # content (cắt 4000) → Master đọc để chuyển tiếp; display_output (cắt 3000) → UI card
+        summary = output[:4000] if len(output) > 4000 else output
+        display = output[:3000] if len(output) > 3000 else output
+        return ToolResult(
+            content=f"[Kết quả từ @{agent_name}]\n{summary}",
+            display_output=display,
+        )
 
     def _h_self_test_agent(self, args: dict) -> ToolResult:
         if self._tester is None:

@@ -207,6 +207,26 @@ function addMsg(cls, text, agentTag) {
   return div;
 }
 
+/* ─── Sub-agent card (orchestration) ──────────────────────── */
+function renderSubAgentCard(agentName, output, isError) {
+  const card = document.createElement("div");
+  card.className = "subagent-card" + (isError ? " subagent-card-error" : "");
+  const agentData = _agentsCache.find((a) => a.slug === agentName || a.name === agentName);
+  const icon = domainIcon[agentData?.domain] || "🤖";
+  const label = agentData?.name || agentName;
+  card.innerHTML = `
+    <div class="sac-header">
+      <span class="sac-icon">${icon}</span>
+      <span class="sac-name">@${esc(agentName)}</span>
+      <span class="sac-label">${esc(label)}</span>
+      ${isError ? '<span class="sac-err-badge">lỗi</span>' : ''}
+    </div>
+    <div class="sac-body">${output ? renderMarkdown(output) : '<em>Không có kết quả</em>'}</div>`;
+  $("#messages").appendChild(card);
+  scrollBottom();
+  return card;
+}
+
 /* ─── Process accordion ─────────────────────────────────────
    Gom các bước xử lý (gọi tool, suy nghĩ trung gian) vào 1 khối thu gọn được,
    TÁCH khỏi câu trả lời cuối — giống cách Claude hiển thị tool-use. */
@@ -772,7 +792,13 @@ $("#chat-form").addEventListener("submit", async (e) => {
 
         } else if (ev === "tool") {
           hideTyping();
-          if (builderTracker.isBuilderTool(data.name)) {
+          if (data.name === "run_agent") {
+            // Orchestration: render sub-agent card ngay trong messages (không gom vào accordion)
+            const agentArg = data.input?.agent_name || "";
+            renderSubAgentCard(agentArg, data.output, data.is_error);
+            // Reset assistantDiv để Master tổng hợp nằm BÊN DƯỚI các card
+            assistantDiv = null; assistantText = "";
+          } else if (builderTracker.isBuilderTool(data.name)) {
             builderTracker.onTool(data.name, data.input, data.is_error);
             // Builder: reset để câu chốt của Master nằm BÊN DƯỚI tracker (giữ thứ tự đúng)
             assistantDiv = null; assistantText = "";

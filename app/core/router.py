@@ -28,6 +28,12 @@ class IntentRouter:
         candidates = {a.name: a for a in self._governance.visible_agents(user_id)}
         slug_map = {a.slug: a for a in candidates.values() if a.slug}
 
+        # 0. Đa-mention: ≥2 agent khác nhau được nhắc → Master điều phối (orchestration).
+        _all_mentions = re.findall(r"@([a-z][a-z0-9-]{1,63})", message)
+        _known_slugs = [s for s in _all_mentions if s in slug_map]
+        if len(set(_known_slugs)) >= 2:
+            return RouteDecision(agent_name=MASTER_AGENT_NAME, routed_by="orchestrate")
+
         # 1. "@slug ..." — explicit mention luôn override sticky session.
         #    @master xử lý riêng vì master không có trong candidates/slug_map.
         m = _MENTION_RE.match(message)

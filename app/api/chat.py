@@ -58,7 +58,14 @@ def chat(
     extra_tools = None
     extra_executor = None
     if agent.name == MASTER_AGENT_NAME and c.settings.builder_enabled:
-        toolset = MasterToolset(c.agents, c.skills, c.governance, c.catalog, user_id, usage=c.usage, tester=c.tester)
+        toolset = MasterToolset(
+            c.agents, c.skills, c.governance, c.catalog, user_id,
+            usage=c.usage,
+            tester=c.tester,
+            engine=c.engine,
+        )
+        toolset._max_agents = c.settings.orchestration_max_agents
+        toolset._sub_rounds = c.settings.orchestration_sub_rounds
         extra_tools = MASTER_TOOLS
         extra_executor = toolset.execute
 
