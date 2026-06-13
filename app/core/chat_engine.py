@@ -142,12 +142,15 @@ class ChatEngine:
     _MAX_SYSTEM_CHARS = 30_000
     _MAX_SKILL_CHARS = 8_000  # mỗi skill tối đa 8k chars trước khi truncate
 
-    def build_system_prompt(self, agent: Agent, user_id: str, message: str = "", auto_start: bool = False) -> str:
+    def build_system_prompt(self, agent: Agent, user_id: str, message: str = "", auto_start: bool = False, extra_system: str | None = None) -> str:
         parts = [agent.system_prompt]
+
+        # Cache 1 lần — tránh N+1 query (3 vòng lặp dưới đều dùng cùng danh sách).
+        agent_skill_names = self._agents.skills_of(agent.name)
 
         # Inject nội dung skill đã gắn (Flow 4 "Dùng"; progressive disclosure = stretch).
         skill_blocks = []
-        for skill_name in self._agents.skills_of(agent.name):
+        for skill_name in agent_skill_names:
             skill = self._skills.get(skill_name)
             if skill is None:
                 continue
@@ -164,7 +167,7 @@ class ChatEngine:
             # Liệt kê rõ task list để model biết phải thực hiện ĐỦ tất cả skill,
             # không chỉ chọn skill nào thấy phù hợp nhất.
             task_list_lines = []
-            for skill_name in self._agents.skills_of(agent.name):
+            for skill_name in agent_skill_names:
                 skill = self._skills.get(skill_name)
                 if skill is None:
                     continue
@@ -189,10 +192,12 @@ class ChatEngine:
                 + "\n\n---\n\n".join(skill_blocks)
             )
 
+        # Semantic search chỉ cho master — agent con không cần (tránh HTTP round-trip / tăng latency).
         # L-03: dùng message hiện tại làm query semantic search, không phải agent.name
-        memories = self._memory.search(user_id, message or agent.name)
-        if memories:
-            parts.append("# Ghi nhớ liên quan về user\n\n" + "\n".join(f"- {m}" for m in memories))
+        if agent.name == MASTER_AGENT_NAME:
+            memories = self._memory.search(user_id, message or agent.name)
+            if memories:
+                parts.append("# Ghi nhớ liên quan về user\n\n" + "\n".join(f"- {m}" for m in memories))
 
         # SLA ~1 phút + xử lý dữ liệu lớn — áp dụng cho mọi agent (cả master).
         parts.append(_SLA_PROMPT_SUFFIX)
@@ -207,7 +212,7 @@ class ChatEngine:
         # Ghi đè mọi hành vi "hỏi user cần gì" từ persona.
         if auto_start:
             skill_lines = []
-            for skill_name in self._agents.skills_of(agent.name):
+            for skill_name in agent_skill_names:
                 skill = self._skills.get(skill_name)
                 if skill:
                     skill_lines.append(f"  - **{skill.name}**: {skill.description}")
@@ -220,6 +225,10 @@ class ChatEngine:
                     + "\n".join(skill_lines)
                     + "\n\nBắt đầu thực hiện ngay — không chờ, không hỏi thêm."
                 )
+
+        # Chỉ thị bổ sung theo ngữ cảnh request (vd: guest không được build) — đặt cuối, ưu tiên cao.
+        if extra_system:
+            parts.append(extra_system)
 
         result = "\n\n".join(parts)
         # L-04: warn nếu tổng system prompt vượt ngưỡng (individual skills đã truncate,
@@ -242,7 +251,7 @@ class ChatEngine:
         Không inject escalate, không auto-start — chạy sạch theo config agent."""
         system = self.build_system_prompt(agent, user_id, message=message)
         user_msg = ChatMessage(role="user", content=message)
-        connectors = [*ALWAYS_ON_SERVERS, *agent.connectors]
+        connectors = list(dict.fromkeys([*ALWAYS_ON_SERVERS, *agent.connectors]))
         tools = self._catalog.tools_for(connectors)
         text_parts: list[str] = []
         try:
@@ -270,8 +279,10 @@ class ChatEngine:
         attachment: dict | None = None,
         extra_tools: list[ToolDef] | None = None,
         extra_executor: ToolExecutor | None = None,
+        extra_system: str | None = None,
     ) -> Iterator[dict[str, Any]]:
-        """extra_tools/extra_executor: bộ tool quản trị của master (builder plugin #1)."""
+        """extra_tools/extra_executor: bộ tool quản trị của master (builder plugin #1).
+        extra_system: chỉ thị bổ sung theo request (vd note guest không được build)."""
         # Auto-trigger: user chỉ tag agent (vd "@be-banh") không nói thêm gì
         # → inject trigger nêu rõ tên skill + pass auto_start để override persona ở cuối system prompt.
         # KHÔNG trigger khi có attachment — user có thể gửi "@agent + file" để xử lý file cụ thể.
@@ -284,7 +295,7 @@ class ChatEngine:
                 skill_names = ", ".join(agent_skills)
                 message = f"Bắt đầu ngay. Thực hiện đầy đủ tất cả skill: {skill_names}. Không hỏi tôi cần gì."
 
-        system = self.build_system_prompt(agent, user_id, message=message, auto_start=auto_start)
+        system = self.build_system_prompt(agent, user_id, message=message, auto_start=auto_start, extra_system=extra_system)
         # auto_start: bỏ qua history — tránh model follow pattern cũ "agent hỏi ngược" từ các lần test trước.
         history = [] if auto_start else self._memory.get_history(user_id, agent.name, limit=self._history_limit)
 
@@ -311,7 +322,9 @@ class ChatEngine:
         messages = [*history, user_msg]
 
         # Tools = connector của agent map từ catalog — không có thì gọi chay.
-        connectors = [*ALWAYS_ON_SERVERS, *agent.connectors]
+        # dict.fromkeys giữ thứ tự, loại duplicate (vd agent.connectors có "web-search"
+        # trùng với ALWAYS_ON_SERVERS → Anthropic API từ chối duplicate tool name).
+        connectors = list(dict.fromkeys([*ALWAYS_ON_SERVERS, *agent.connectors]))
         tools = self._catalog.tools_for(connectors)
         catalog_execute = self._catalog.execute
         if extra_tools:
@@ -348,6 +361,7 @@ class ChatEngine:
                     system, messages, tools, execute, max_rounds=self._max_tool_rounds, model=self._model
                 )
             else:
+                # Dead path: ALWAYS_ON_SERVERS luôn có tool nên tools không bao giờ rỗng ở đây.
                 events = self._llm.chat(system, messages, model=self._model)
 
             for ev in events:
@@ -365,9 +379,9 @@ class ChatEngine:
                         },
                     }
                     if ev.result.delegate_to:
-                        # L-01: emit text trước khi delegate để user không thấy blank
+                        # L-01: emit text trước khi delegate để user không thấy blank.
+                        # Không ghi vào assistant_text — tránh lưu câu UI này vào memory.
                         fallback = f"Đang chuyển yêu cầu sang @{ev.result.delegate_to}..."
-                        assistant_text.append(fallback)
                         yield {"event": "delta", "data": {"text": fallback}}
                         yield {
                             "event": "delegate",
