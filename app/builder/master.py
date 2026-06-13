@@ -229,6 +229,20 @@ MASTER_TOOLS: list[ToolDef] = [
             "required": ["agent_name", "message"],
         },
     ),
+    ToolDef(
+        name="set_salutation",
+        description=(
+            "Lưu cách xưng hô của user (anh/chị) sau khi user cho biết. Gọi đúng MỘT lần "
+            "khi user trả lời câu hỏi xưng hô. Sau đó hệ thống tự áp cho mọi agent."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "salutation": {"type": "string", "enum": ["anh", "chị"], "description": "Xưng hô user muốn được gọi"},
+            },
+            "required": ["salutation"],
+        },
+    ),
 ]
 
 
@@ -244,6 +258,7 @@ _GUEST_BLOCKED_TOOLS = {
     "submit_for_review",
     "fetch_url",
     "self_test_agent",
+    "set_salutation",  # cần user row để lưu — guest không persist được
 }
 
 # Tool cấp cho master khi user là guest: bỏ các tool ghi, giữ read + delegate + run
@@ -275,7 +290,7 @@ def _ok(payload: Any) -> ToolResult:
 class MasterToolset:
     """Bộ tool quản trị của master, bound theo user đang chat (quyền sở hữu Flow 2)."""
 
-    def __init__(self, agents, skills, governance: Governance, catalog, user_id: str, *, is_guest: bool = False, usage=None, tester=None, engine=None):
+    def __init__(self, agents, skills, governance: Governance, catalog, user_id: str, *, is_guest: bool = False, usage=None, tester=None, engine=None, user_repo=None):
         self._agents = agents
         self._skills = skills
         self._gov = governance
@@ -283,6 +298,7 @@ class MasterToolset:
         self._usage = usage
         self._user_id = user_id
         self._is_guest = is_guest
+        self._user_repo = user_repo  # để lưu xưng hô (set_salutation)
         self._tester = tester      # AgentTester | None (HM3)
         self._engine = engine      # ChatEngine | None (orchestration)
         self._orchestration_count = 0  # đếm per-request, reset tự nhiên mỗi request mới
@@ -311,6 +327,17 @@ class MasterToolset:
         except Exception as e:  # noqa: BLE001 — lỗi bất ngờ cũng trả về model, không vỡ stream
             log.exception("master tool EXCEPTION %s", name)
             return ToolResult(content=f"lỗi hệ thống: {e}", is_error=True)
+
+    def _h_set_salutation(self, args: dict) -> ToolResult:
+        value = str(args.get("salutation", "")).strip().lower()
+        if value not in ("anh", "chị"):
+            return ToolResult(content="salutation phải là 'anh' hoặc 'chị'.", is_error=True)
+        if self._user_repo is None:
+            return ToolResult(content="không lưu được xưng hô (thiếu user_repo).", is_error=True)
+        saved = self._user_repo.set_salutation(self._user_id, value)
+        if not saved:
+            return ToolResult(content="chưa lưu được (user chưa đăng nhập) — vẫn xưng hô bình thường.", is_error=True)
+        return _ok({"salutation": value, "note": f"Đã lưu — từ giờ gọi user là '{value}'."})
 
     # --- read ---
 

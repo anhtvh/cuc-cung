@@ -59,6 +59,9 @@ def chat(
     if not c.governance.can_use_agent(agent, user_id):
         raise HTTPException(status_code=403, detail="Bạn không có quyền dùng agent này.")
 
+    # Xưng hô đã lưu của user (anh/chị) — guest không có row nên trả None.
+    salutation = None if is_guest else c.user_repo.get_salutation(user_id)
+
     extra_tools = None
     extra_executor = None
     extra_system = None
@@ -69,6 +72,7 @@ def chat(
             usage=c.usage,
             tester=c.tester,
             engine=c.engine,
+            user_repo=c.user_repo,
         )
         toolset._max_agents = c.settings.orchestration_max_agents
         toolset._sub_rounds = c.settings.orchestration_sub_rounds
@@ -86,7 +90,7 @@ def chat(
         attachment = req.attachment.model_dump() if req.attachment else None
         _last_text: list[str] = []  # mutable container để thu text cuối
         try:
-            for ev in c.engine.stream(user_id, agent, req.message, attachment=attachment, extra_tools=extra_tools, extra_executor=extra_executor, extra_system=extra_system):
+            for ev in c.engine.stream(user_id, agent, req.message, attachment=attachment, extra_tools=extra_tools, extra_executor=extra_executor, extra_system=extra_system, salutation=salutation, is_guest=is_guest):
                 if ev["event"] == "delta":
                     _last_text.append(ev["data"].get("text", ""))
                 yield _sse(ev["event"], ev["data"])

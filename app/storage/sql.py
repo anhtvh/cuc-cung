@@ -109,6 +109,7 @@ class UserRow(Base):
     role: Mapped[str] = mapped_column(Text, default="user")   # user | admin
     hashed_password: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[str | None] = mapped_column(Text)
+    salutation: Mapped[str | None] = mapped_column(Text)  # "anh" | "chị" | None (chưa biết)
 
 
 class ConvMetaRow(Base):
@@ -512,6 +513,21 @@ class SqlUserRepo:
     def get_by_email(self, email: str) -> UserRow | None:
         with Session(self._engine) as s:
             return s.execute(select(UserRow).where(UserRow.email == email)).scalar_one_or_none()
+
+    def get_salutation(self, email: str) -> str | None:
+        """Xưng hô đã lưu của user (anh/chị) — None nếu chưa biết hoặc là guest."""
+        row = self.get_by_email(email)
+        return row.salutation if row else None
+
+    def set_salutation(self, email: str, salutation: str) -> bool:
+        """Lưu xưng hô cho user đã đăng nhập. Trả False nếu không có row (vd guest)."""
+        with Session(self._engine) as s:
+            row = s.execute(select(UserRow).where(UserRow.email == email)).scalar_one_or_none()
+            if row is None:
+                return False
+            row.salutation = salutation
+            s.commit()
+            return True
 
     def upsert_google(self, sub: str, email: str, name: str, picture: str) -> UserRow:
         with Session(self._engine) as s:
