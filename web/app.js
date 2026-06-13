@@ -66,20 +66,41 @@ window.switchTab = function(name) {
 };
 
 /* ─── Home ──────────────────────────────────────────────── */
+let _homeAgentsAll = [];
+
 async function loadHomeAgents() {
-  let agents = [];
-  try { agents = await fetch("/agents", { headers: headers() }).then((r) => r.json()); } catch (_) {}
+  try {
+    const data = await fetch("/agents", { headers: headers() }).then((r) => r.json());
+    _homeAgentsAll = data;
+  } catch (_) {}
+  renderHomeAgents();
+}
 
-  const active = agents.filter((a) => a.status === "public");
+function renderHomeAgents() {
+  const q = ($("#home-search")?.value || "").toLowerCase();
+  const domain = _homeActiveDomain || "";
 
-  const cards = active.map((a) => `
-    <div class="ahc" onclick="startChatWith('${esc(a.name)}','${esc(a.tagline || a.description)}')">
+  const active = _homeAgentsAll.filter((a) => {
+    if (a.status !== "public") return false;
+    if (domain && a.domain !== domain) return false;
+    if (q && !(a.name + " " + (a.tagline || "") + " " + a.description).toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  const cards = active.map((a) => {
+    const callsBadge = a.calls >= 5
+      ? `<span class="ahc-popular">🔥 Phổ biến</span>`
+      : a.calls > 0
+        ? `<span class="ahc-calls">${a.calls} lần</span>`
+        : "";
+    return `<div class="ahc" onclick="startChatWith('${esc(a.name)}','${esc(a.tagline || a.description)}')">
       <span class="ahc-icon">${domainIcon[a.domain] || "🤖"}</span>
-      <div class="ahc-name">${esc(a.name)}</div>
+      <div class="ahc-name">${esc(a.name)}${callsBadge}</div>
       <div class="ahc-slug">@${esc(a.slug || a.name)}</div>
       <div class="ahc-desc">${esc(a.tagline || a.description.split(/[.。]/)[0].slice(0, 80))}</div>
       <div class="ahc-tag"><span class="tag">${esc(a.domain || "general")}</span></div>
-    </div>`);
+    </div>`;
+  });
 
   cards.push(`
     <div class="ahc new-card" onclick="startChatWith('master','')">
@@ -89,8 +110,27 @@ async function loadHomeAgents() {
       <div class="ahc-tag"><span class="tag" style="color:#a5b4fc;background:rgba(99,102,241,.12)">builder</span></div>
     </div>`);
 
-  $("#home-agent-grid").innerHTML = cards.join("") || `<p class="empty">Chưa có agent nào</p>`;
+  if (active.length === 0 && (q || domain)) {
+    $("#home-agent-grid").innerHTML = `<p class="empty">Không tìm thấy agent phù hợp</p>`;
+    // Vẫn thêm nút tạo agent mới
+    $("#home-agent-grid").innerHTML += cards[cards.length - 1];
+    return;
+  }
+  $("#home-agent-grid").innerHTML = cards.join("");
 }
+
+let _homeActiveDomain = "";
+
+document.addEventListener("DOMContentLoaded", () => {
+  $("#home-search")?.addEventListener("input", renderHomeAgents);
+  $("#home-domain-tabs")?.querySelectorAll(".hdt").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      _homeActiveDomain = btn.dataset.domain;
+      $("#home-domain-tabs").querySelectorAll(".hdt").forEach((b) => b.classList.toggle("active", b === btn));
+      renderHomeAgents();
+    });
+  });
+});
 
 window.startChatWith = function(name, desc) {
   saveCurrentConv();
@@ -1115,16 +1155,23 @@ async function loadCatalog() {
 
   // Tất cả agents (active + không phải của mình)
   const publicAgents = agents.filter((a) => a.status === "public" || a.created_by !== state.userId);
-  $("#agent-list").innerHTML = publicAgents.filter(match).map((a) => `
-    <div class="ccard">
+  $("#agent-list").innerHTML = publicAgents.filter(match).map((a) => {
+    const callsStr = a.calls >= 5
+      ? `<span class="calls-badge popular">🔥 ${a.calls} lần</span>`
+      : a.calls > 0
+        ? `<span class="calls-badge">${a.calls} lần</span>`
+        : "";
+    return `<div class="ccard">
       <div class="ccard-name">
         ${esc(a.name)} <span class="ccard-slug">@${esc(a.slug || a.name)}</span>
         <span class="badge ${a.status}">${a.status}</span>
         ${a.has_pending_changes ? '<span class="badge pending_review">sửa đổi chờ duyệt</span>' : ""}
+        ${callsStr}
       </div>
       <div class="ccard-desc">${esc(a.tagline || a.description.split(/[.。]/)[0].slice(0, 100))}</div>
       <div class="ccard-meta">domain: ${a.domain || "—"} · skills: ${a.skills.join(", ") || "—"}</div>
-    </div>`).join("") || '<div class="empty">Chưa có agent nào đang active</div>';
+    </div>`;
+  }).join("") || '<div class="empty">Chưa có agent nào đang active</div>';
 
   $("#skill-list").innerHTML = skills.filter(match).map((s) => `
     <div class="ccard">

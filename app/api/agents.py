@@ -18,6 +18,7 @@ def list_agents(
     agents = c.governance.visible_agents(user_id)
     if domain:
         agents = [a for a in agents if a.domain == domain]
+    calls_map: dict[str, int] = c.usage.call_counts()
     return [
         {
             "id": a.id,
@@ -33,6 +34,7 @@ def list_agents(
             "connectors": a.connectors,
             "has_pending_changes": a.pending_changes is not None,
             "review_note": a.review_note,
+            "calls": calls_map.get(a.name, 0),
         }
         for a in agents
     ]

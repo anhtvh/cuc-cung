@@ -73,12 +73,21 @@ def chat(
         # L-09: note được set khi sticky agent không còn visible → thông báo cho UI
         yield _sse("meta", {"agent_name": agent.name, "agent_tagline": agent.tagline, "agent_description": agent.description, "agent_slug": agent.slug, "routed_by": decision.routed_by, "confidence": decision.confidence, "note": decision.note})
         attachment = req.attachment.model_dump() if req.attachment else None
+        _last_text: list[str] = []  # mutable container để thu text cuối
         try:
             for ev in c.engine.stream(user_id, agent, req.message, attachment=attachment, extra_tools=extra_tools, extra_executor=extra_executor):
+                if ev["event"] == "delta":
+                    _last_text.append(ev["data"].get("text", ""))
                 yield _sse(ev["event"], ev["data"])
         except Exception as e:  # noqa: BLE001 — lỗi giữa stream phải báo UI, không chết im lặng
             log.exception("chat stream lỗi (user=%s, agent=%s)", user_id, agent.name)
             yield _sse("error", {"message": str(e)})
+        finally:
+            if _last_text:
+                try:
+                    c.conv_meta.upsert(user_id, agent.name, "".join(_last_text)[:120])
+                except Exception:  # noqa: BLE001
+                    pass
 
     return StreamingResponse(
         event_stream(),

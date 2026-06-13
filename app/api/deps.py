@@ -10,7 +10,7 @@ from app.core.governance import Governance
 from app.core.router import IntentRouter
 from app.memory.base import Memory
 from app.storage.base import AgentRepo, SkillRepo, UsageRepo
-from app.storage.sql import SqlFeedbackRepo
+from app.storage.sql import SqlConvMetaRepo, SqlFeedbackRepo
 from app.tools.catalog import ToolCatalog
 from app.tools.base import ToolProvider
 
@@ -22,6 +22,7 @@ class Container:
     skills: SkillRepo
     usage: UsageRepo
     feedback: SqlFeedbackRepo
+    conv_meta: SqlConvMetaRepo
     memory: Memory
     llm: object
     catalog: ToolCatalog

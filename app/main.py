@@ -28,7 +28,7 @@ from app.core.chat_engine import ChatEngine
 from app.core.governance import Governance
 from app.core.router import IntentRouter
 from app.memory.sql_memory import SqlMemory
-from app.storage.sql import SqlAgentRepo, SqlFeedbackRepo, SqlSkillRepo, SqlUsageRepo, make_engine
+from app.storage.sql import SqlAgentRepo, SqlConvMetaRepo, SqlFeedbackRepo, SqlSkillRepo, SqlUsageRepo, make_engine
 from app.tools.catalog import SystemProvider, ToolCatalog
 from app.tools.mcp_gateway import IamTokenProvider, McpGatewayProvider
 from app.tools.mock.company_docs import CompanyDocsProvider
@@ -140,6 +140,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     skills = SqlSkillRepo(engine)
     usage = SqlUsageRepo(engine)
     feedback = SqlFeedbackRepo(engine)
+    conv_meta = SqlConvMetaRepo(engine)
     memory = make_memory(settings, engine)
 
     init_limiter(settings.rate_limit_per_minute)
@@ -196,6 +197,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         skills=skills,
         usage=usage,
         feedback=feedback,
+        conv_meta=conv_meta,
         memory=memory,
         llm=llm,
         catalog=catalog,

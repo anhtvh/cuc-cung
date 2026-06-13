@@ -99,6 +99,18 @@ class FeedbackRow(Base):
     created_at: Mapped[str | None] = mapped_column(Text)
 
 
+class ConvMetaRow(Base):
+    """Conversation metadata — ghi độc lập với memory backend để /history luôn hoạt động."""
+
+    __tablename__ = "conv_meta"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(Text, nullable=False)
+    agent_name: Mapped[str] = mapped_column(Text, nullable=False)
+    last_text: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[str | None] = mapped_column(Text)
+
+
 # --- row <-> domain model ---
 
 
@@ -319,6 +331,17 @@ class SqlUsageRepo:
             )
             s.commit()
 
+    def call_counts(self) -> dict[str, int]:
+        """Trả {agent_name: số lần gọi} cho tất cả agents — dùng để hiển thị trên cards."""
+        with Session(self._engine) as s:
+            q = (
+                select(UsageRow.agent_name, func.count().label("cnt"))
+                .where(UsageRow.agent_name.is_not(None))
+                .group_by(UsageRow.agent_name)
+            )
+            rows = s.execute(q).all()
+        return {r.agent_name: r.cnt for r in rows}
+
     def stats(self) -> list[dict]:
         """Tổng hợp usage theo agent: số lần gọi, token dùng."""
         with Session(self._engine) as s:
@@ -390,6 +413,45 @@ class SqlFeedbackRepo:
             {"agent": r.agent_name, "up": r.up or 0, "down": r.down or 0}
             for r in rows
         ]
+
+
+class SqlConvMetaRepo:
+    """Ghi/đọc conversation metadata độc lập với memory backend."""
+
+    def __init__(self, engine: Engine):
+        self._engine = engine
+
+    def upsert(self, user_id: str, agent_name: str, last_text: str) -> None:
+        with Session(self._engine) as s:
+            existing = s.execute(
+                select(ConvMetaRow)
+                .where(ConvMetaRow.user_id == user_id, ConvMetaRow.agent_name == agent_name)
+            ).scalar_one_or_none()
+            if existing:
+                existing.last_text = last_text[:120]
+                existing.updated_at = now_iso()
+            else:
+                s.add(ConvMetaRow(user_id=user_id, agent_name=agent_name, last_text=last_text[:120], updated_at=now_iso()))
+            s.commit()
+
+    def list(self, user_id: str, limit: int = 20) -> list[dict]:
+        with Session(self._engine) as s:
+            q = (
+                select(ConvMetaRow)
+                .where(ConvMetaRow.user_id == user_id)
+                .order_by(ConvMetaRow.updated_at.desc())
+                .limit(limit)
+            )
+            rows = list(s.scalars(q))
+        return [{"agent_name": r.agent_name, "last_text": r.last_text or "", "updated_at": r.updated_at or ""} for r in rows]
+
+    def delete(self, user_id: str, agent_name: str) -> None:
+        with Session(self._engine) as s:
+            s.execute(
+                delete(ConvMetaRow)
+                .where(ConvMetaRow.user_id == user_id, ConvMetaRow.agent_name == agent_name)
+            )
+            s.commit()
 
 
 def make_engine(database_url: str) -> Engine:
