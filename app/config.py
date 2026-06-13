@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     # qwen3-5-27b là thinking model, content=None → dùng gemma (non-thinking, classify OK).
     router_model: str = "google/gemma-4-31b-it"
     max_tokens: int = 4096
-    # An toàn tool loop (Flow 3): tối đa 5 vòng tool/lượt, timeout mỗi tool.
+    # An toàn tool loop (Flow 3): tối đa 10 vòng tool/lượt, timeout mỗi tool.
     max_tool_rounds: int = 10
     tool_timeout_seconds: int = 15
     # SLA trả lời (~1 phút): khi tool loop vượt ngưỡng này, ép model trả lời NGAY
@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     router_timeout_seconds: int = 15
     # I-06: giới hạn số call /chat per user per session (0 = không giới hạn — contest default).
     # Production nên set ≥1 để tránh credit cạn do 1 user trigger vô tận master tool loop.
+    # CHƯA WIRE vào /chat — cần session state riêng, rate_limit_per_minute đã cover phần lớn use-case.
     max_chat_calls_per_session: int = 0
     # Sliding-window rate limit cho /chat: số lần gọi tối đa mỗi phút per user (0 = disabled).
     # Production khuyến nghị 20; contest để 0 để không ảnh hưởng demo.
@@ -69,8 +70,9 @@ class Settings(BaseSettings):
     self_test_enabled: bool = True
     # Số test case tối đa mỗi build session (cap credit)
     self_test_max_cases: int = 3
-    # Tool rounds tối đa mỗi test case trong sandbox (thấp để tiết kiệm)
-    self_test_sandbox_rounds: int = 2
+    # Tool rounds tối đa mỗi test case trong sandbox
+    # web-search agent cần ≥3 (search → fetch → answer), để 5 cho margin
+    self_test_sandbox_rounds: int = 5
     # Số vòng master tự sửa khi fail trước khi báo user
     self_test_fix_attempts: int = 2
 
@@ -94,6 +96,12 @@ class Settings(BaseSettings):
     admin_email: str = ""
     admin_password: str = ""  # plain text, chỉ đọc khi boot để hash + lưu DB
 
+    # None → suy ra từ database_url (sqlite = không secure); True/False ghi đè hẳn.
+    cookie_secure: bool | None = None
+    # Base URL cố định cho Google OAuth redirect_uri (tránh x-forwarded-host injection).
+    # Ví dụ: GOOGLE_REDIRECT_BASE=https://app.example.com
+    google_redirect_base: str = ""
+
     # --- MCP Gateway (Flow 5 — cắm server thật) ---
     # Lấy endpoint từ: GET /gateway/api/v1/gateways/<name> → field `endpoint` (state=ACTIVE).
     # Để trống → catalog chỉ dùng mock providers.
@@ -101,7 +109,11 @@ class Settings(BaseSettings):
     # Tên target trên gateway (vd "web-search"). Để trống nếu gateway 1 target + tools không prefix.
     mcp_gateway_target: str = ""
     # Tên server trong catalog (hiển thị trong Catalog/Review UI).
-    mcp_gateway_server_name: str = "web-search-live"
+    # Giữ "web-search" để prompt/agent config không đổi khi swap gateway ↔ local.
+    mcp_gateway_server_name: str = "web-search"
+    # Shared secret cho endpoint /mcp — gateway gửi header X-Mcp-Secret.
+    # Để trống = không kiểm tra (dev/local). Set khi deploy public để ngăn abuse.
+    mcp_gateway_secret: str = ""
 
     @model_validator(mode="after")
     def _empty_env_fallback(self) -> "Settings":

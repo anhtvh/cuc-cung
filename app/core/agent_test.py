@@ -53,17 +53,19 @@ class AgentTester:
     # user_id riêng cho sandbox — không lẫn với history thật của user
     _SANDBOX_USER = "__selftest__"
 
-    def __init__(self, engine, llm, judge_model: str):
+    def __init__(self, engine, llm, judge_model: str, sandbox_rounds: int = 5):
         self._engine = engine
         self._llm = llm
         self._judge_model = judge_model
+        self._sandbox_rounds = sandbox_rounds
 
     def run_tests(
         self,
         agent,
         test_cases: list[TestCase],
-        max_tool_rounds: int = 2,
+        max_tool_rounds: int | None = None,
     ) -> TestReport:
+        max_tool_rounds = max_tool_rounds if max_tool_rounds is not None else self._sandbox_rounds
         results: list[CaseResult] = []
         for tc in test_cases:
             actual = self._engine.run_once(
@@ -107,6 +109,6 @@ class AgentTester:
             )
             return bool(result.get("pass", False)), str(result.get("reason", ""))
         except Exception as e:  # noqa: BLE001
-            log.warning("judge lỗi (bỏ qua, default PASS): %s", e)
-            # Judge fail → PASS để không chặn flow (soft degrade)
-            return True, "judge không chạy được — mặc định PASS để không chặn flow"
+            log.warning("judge lỗi — chưa test thực sự, mặc định PASS: %s", e)
+            # Judge fail → PASS để không chặn flow (soft degrade), nhưng báo rõ chưa test thật
+            return True, "judge không chạy được — chưa kiểm thật (mặc định PASS để không chặn flow)"

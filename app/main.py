@@ -154,7 +154,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if settings.mcp_gateway_endpoint:
         _iam = IamTokenProvider(settings.greennode_client_id, settings.greennode_client_secret)
         web_search_provider = McpGatewayProvider(
-            server_name="web-search",
+            server_name=settings.mcp_gateway_server_name,
             gateway_endpoint=settings.mcp_gateway_endpoint,
             token_provider=_iam,
             target_name=settings.mcp_gateway_target or None,
@@ -189,7 +189,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # HM3: self-test sandbox (judge dùng model rẻ qua router_llm)
     tester: AgentTester | None = None
     if settings.self_test_enabled:
-        tester = AgentTester(engine=chat_engine, llm=router_llm, judge_model=settings.router_model)
+        tester = AgentTester(engine=chat_engine, llm=router_llm, judge_model=settings.router_model, sandbox_rounds=settings.self_test_sandbox_rounds)
 
     ensure_seed(agents, skills)
 
