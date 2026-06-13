@@ -6,6 +6,7 @@ serialize thành SSE, không chứa logic.
 
 import logging
 import re
+from datetime import datetime, timedelta, timezone
 from typing import Any, Iterator
 
 from app.core.models import MASTER_AGENT_NAME, Agent, ChatMessage, ItemStatus
@@ -68,10 +69,12 @@ Mục tiêu: trả lời user trong khoảng **1 phút**. KHÔNG cố tra cứu/
 - Nếu hệ thống nhắc *"đã chạm giới hạn thời gian (SLA)"* → dừng tra cứu, tổng hợp & trả lời ngay.
 """
 
-_TONE_PROMPT_SUFFIX = """
+def _tone_prompt(address: str) -> str:
+    """Phong cách agent con — xưng 'em', gọi user theo {address} (anh/chị/anh-chị)."""
+    return f"""
 # Phong cách giao tiếp (BẮT BUỘC — không override)
 
-Xưng **em**, gọi user là **bạn** — luôn như vậy, mọi tin nhắn, không ngoại lệ.
+Xưng **em**, gọi user là **{address}** — luôn như vậy, mọi tin nhắn, không ngoại lệ.
 Tone **thân thiện, gần gũi, dễ thương** — như đồng nghiệp nhiệt tình hỗ trợ.
 Cuối câu trả lời: tóm tắt ngắn điểm chính và hỏi thêm nếu cần.
 Khi chưa rõ yêu cầu: hỏi lại nhẹ nhàng, không tự đoán.
@@ -142,21 +145,33 @@ class ChatEngine:
     _MAX_SYSTEM_CHARS = 30_000
     _MAX_SKILL_CHARS = 8_000  # mỗi skill tối đa 8k chars trước khi truncate
 
-    def build_system_prompt(self, agent: Agent, user_id: str, message: str = "", auto_start: bool = False, extra_system: str | None = None) -> str:
-        parts = [agent.system_prompt]
+    def build_system_prompt(self, agent: Agent, user_id: str, message: str = "", auto_start: bool = False, extra_system: str | None = None, salutation: str | None = None, is_guest: bool = False) -> str:
+        # Xưng hô động: nếu đã biết anh/chị → dùng đúng; chưa biết → 'anh/chị' trung tính.
+        address = salutation if salutation in ("anh", "chị") else "anh/chị"
+        # Inject ngày hiện tại (giờ VN) để model không mặc định "hiện tại" theo mốc training
+        # (vd hỏi "tin hôm nay" → search nhầm thời điểm cũ). Vẫn còn tool get_current_date.
+        _today = datetime.now(timezone(timedelta(hours=7))).date().isoformat()
+        _date_ctx = (
+            f"Bối cảnh thời gian: hôm nay là {_today} (giờ Việt Nam, UTC+7). "
+            "Khi cần thông tin theo thời gian thực hoặc 'mới nhất/hôm nay', dùng web-search "
+            "bám sát mốc thời gian này — KHÔNG giả định một thời điểm nào khác."
+        )
+        parts = [_date_ctx, agent.system_prompt]
 
-        # Cache 1 lần — tránh N+1 query (3 vòng lặp dưới đều dùng cùng danh sách).
+        # Cache 1 lần — tránh N+1 query. Loại skill rejected/không tồn tại NGAY tại nguồn
+        # để MỌI nơi (task list, auto-start, nội dung) nhất quán — tránh nghịch lý "bảo
+        # model phải làm skill X" nhưng lại không đưa nội dung skill X vào prompt.
         agent_skill_names = self._agents.skills_of(agent.name)
+        valid_skills = []
+        for skill_name in agent_skill_names:
+            skill = self._skills.get(skill_name)
+            if skill is None or skill.status == ItemStatus.rejected:
+                continue
+            valid_skills.append(skill)
 
         # Inject nội dung skill đã gắn (Flow 4 "Dùng"; progressive disclosure = stretch).
         skill_blocks = []
-        for skill_name in agent_skill_names:
-            skill = self._skills.get(skill_name)
-            if skill is None:
-                continue
-            # Bỏ qua skill đã bị từ chối — không đưa nội dung chưa/không được duyệt vào prompt.
-            if skill.status == ItemStatus.rejected:
-                continue
+        for skill in valid_skills:
             content = skill.content
             # L-04: truncate skill lớn để tránh context overflow — cắt ở 8k chars
             if len(content) > self._MAX_SKILL_CHARS:
@@ -169,12 +184,7 @@ class ChatEngine:
         if skill_blocks:
             # Liệt kê rõ task list để model biết phải thực hiện ĐỦ tất cả skill,
             # không chỉ chọn skill nào thấy phù hợp nhất.
-            task_list_lines = []
-            for skill_name in agent_skill_names:
-                skill = self._skills.get(skill_name)
-                if skill is None:
-                    continue
-                task_list_lines.append(f"- **{skill.name}**: {skill.description}")
+            task_list_lines = [f"- **{s.name}**: {s.description}" for s in valid_skills]
             task_list_block = (
                 "# Nhiệm vụ bắt buộc của bạn\n\n"
                 "Với MỖI lượt chat thuộc domain của bạn, bạn PHẢI hoàn thành ĐẦY ĐỦ "
@@ -205,20 +215,35 @@ class ChatEngine:
         # SLA ~1 phút + xử lý dữ liệu lớn — áp dụng cho mọi agent (cả master).
         parts.append(_SLA_PROMPT_SUFFIX)
 
+        # Master: xưng 'mình', gọi user theo anh/chị nếu đã biết; chưa biết (và user đã
+        # đăng nhập) → hỏi đúng 1 lần rồi lưu bằng tool set_salutation.
+        if agent.name == MASTER_AGENT_NAME:
+            if salutation in ("anh", "chị"):
+                parts.append(f"# Xưng hô\n\nXưng **mình**, gọi user là **{salutation}** — KHÔNG gọi 'bạn'.")
+            elif not is_guest:
+                parts.append(
+                    "# Xưng hô\n\nBạn CHƯA biết nên gọi user là anh hay chị. Ngay đầu cuộc trò "
+                    "chuyện (hoặc lúc tự nhiên nhất), hỏi đúng MỘT lần: *\"Để xưng hô cho thân "
+                    "mật, mình nên gọi bạn là anh hay chị ạ?\"* — sau khi user trả lời, gọi tool "
+                    "`set_salutation` để lưu, rồi từ đó gọi đúng anh/chị. Trước khi biết, tạm gọi 'anh/chị'. "
+                    "KHÔNG hỏi lại nếu user đã trả lời hoặc đã từ chối."
+                )
+            else:
+                parts.append("# Xưng hô\n\nXưng **mình**, gọi user là **anh/chị** — KHÔNG gọi 'bạn'.")
+
         # Agent con: enforce tone + escalate + web search.
         if agent.name != MASTER_AGENT_NAME:
-            parts.append(_TONE_PROMPT_SUFFIX)
-            parts.append(_ESCALATION_PROMPT_SUFFIX)
+            parts.append(_tone_prompt(address))
+            # Chỉ hướng dẫn escalate khi tool escalate thật sự được cấp (stream gate theo
+            # escalate_enabled) — tránh prompt bảo gọi tool không tồn tại.
+            if agent.escalate_enabled:
+                parts.append(_ESCALATION_PROMPT_SUFFIX)
             parts.append(_WEB_SEARCH_PROMPT_SUFFIX)
 
         # Auto-start override ở CUỐI system prompt — vị trí LLM ưu tiên cao nhất.
         # Ghi đè mọi hành vi "hỏi user cần gì" từ persona.
         if auto_start:
-            skill_lines = []
-            for skill_name in agent_skill_names:
-                skill = self._skills.get(skill_name)
-                if skill:
-                    skill_lines.append(f"  - **{skill.name}**: {skill.description}")
+            skill_lines = [f"  - **{s.name}**: {s.description}" for s in valid_skills]
             if skill_lines:
                 parts.append(
                     "# [LỆNH HỆ THỐNG — KHÔNG OVERRIDE]\n\n"
@@ -283,6 +308,8 @@ class ChatEngine:
         extra_tools: list[ToolDef] | None = None,
         extra_executor: ToolExecutor | None = None,
         extra_system: str | None = None,
+        salutation: str | None = None,
+        is_guest: bool = False,
     ) -> Iterator[dict[str, Any]]:
         """extra_tools/extra_executor: bộ tool quản trị của master (builder plugin #1).
         extra_system: chỉ thị bổ sung theo request (vd note guest không được build)."""
@@ -305,7 +332,7 @@ class ChatEngine:
                 skill_names = ", ".join(agent_skills)
                 message = f"Bắt đầu ngay. Thực hiện đầy đủ tất cả skill: {skill_names}. Không hỏi tôi cần gì."
 
-        system = self.build_system_prompt(agent, user_id, message=message, auto_start=auto_start, extra_system=extra_system)
+        system = self.build_system_prompt(agent, user_id, message=message, auto_start=auto_start, extra_system=extra_system, salutation=salutation, is_guest=is_guest)
         # auto_start: bỏ qua history — tránh model follow pattern cũ "agent hỏi ngược" từ các lần test trước.
         history = [] if auto_start else self._memory.get_history(user_id, agent.name, limit=self._history_limit)
 
