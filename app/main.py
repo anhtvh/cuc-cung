@@ -19,8 +19,10 @@ from app.api import mcp as mcp_api
 from app.api import review as review_api
 from app.api import skills as skills_api
 from app.api import upload as upload_api
+from app.api import auth as auth_api
 from app.api.deps import Container
 from app.auth.middleware import UserIdMiddleware
+from app.auth.password_auth import hash_password
 from app.auth.rate_limiter import init_limiter
 from app.config import PROJECT_ROOT, Settings, load_settings
 from app.core.agent_test import AgentTester
@@ -28,7 +30,7 @@ from app.core.chat_engine import ChatEngine
 from app.core.governance import Governance
 from app.core.router import IntentRouter
 from app.memory.sql_memory import SqlMemory
-from app.storage.sql import SqlAgentRepo, SqlConvMetaRepo, SqlFeedbackRepo, SqlSkillRepo, SqlUsageRepo, make_engine
+from app.storage.sql import SqlAgentRepo, SqlConvMetaRepo, SqlFeedbackRepo, SqlSkillRepo, SqlUsageRepo, SqlUserRepo, make_engine
 from app.tools.catalog import SystemProvider, ToolCatalog
 from app.tools.mcp_gateway import IamTokenProvider, McpGatewayProvider
 from app.tools.mock.company_docs import CompanyDocsProvider
@@ -141,6 +143,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     usage = SqlUsageRepo(engine)
     feedback = SqlFeedbackRepo(engine)
     conv_meta = SqlConvMetaRepo(engine)
+    user_repo = SqlUserRepo(engine)
     memory = make_memory(settings, engine)
 
     init_limiter(settings.rate_limit_per_minute)
@@ -190,6 +193,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     ensure_seed(agents, skills)
 
+    # Seed admin user từ env ADMIN_EMAIL + ADMIN_PASSWORD
+    if settings.admin_email and settings.admin_password:
+        user_repo.seed_admin(settings.admin_email, hash_password(settings.admin_password))
+
     app = FastAPI(title="Agent Hub", version="0.1.0")
     app.state.container = Container(
         settings=settings,
@@ -198,6 +205,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         usage=usage,
         feedback=feedback,
         conv_meta=conv_meta,
+        user_repo=user_repo,
         memory=memory,
         llm=llm,
         catalog=catalog,
@@ -207,8 +215,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         web_search_provider=web_search_provider,
         tester=tester,
     )
-    app.add_middleware(UserIdMiddleware)
+    app.add_middleware(UserIdMiddleware, jwt_secret=settings.jwt_secret, guest_mode=settings.guest_mode)
 
+    app.include_router(auth_api.router)
     app.include_router(chat_api.router)
     app.include_router(agents_api.router)
     app.include_router(skills_api.router)

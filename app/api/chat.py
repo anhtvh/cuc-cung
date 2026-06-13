@@ -83,7 +83,8 @@ def chat(
             log.exception("chat stream lỗi (user=%s, agent=%s)", user_id, agent.name)
             yield _sse("error", {"message": str(e)})
         finally:
-            if _last_text:
+            # Guest không lưu conv_meta (history không persist qua refresh)
+            if _last_text and user_id != "guest":
                 try:
                     c.conv_meta.upsert(user_id, agent.name, "".join(_last_text)[:120])
                 except Exception:  # noqa: BLE001

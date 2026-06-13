@@ -82,6 +82,18 @@ class Settings(BaseSettings):
     agentbase_memory_store_id: str = ""
     agentbase_memory_strategy_id: str = ""
 
+    # --- Auth ---
+    # Tắt guest mode: chỉ user đã login mới vào được (mọi route trả 401 cho guest).
+    guest_mode: bool = True
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    # JWT cookie "session" (httpOnly, SameSite=Lax) — đổi secret = invalidate toàn bộ session.
+    jwt_secret: str = ""
+    jwt_expire_hours: int = 168  # 7 ngày
+    # Admin duy nhất — seed vào DB khi khởi động, hash password tự động.
+    admin_email: str = ""
+    admin_password: str = ""  # plain text, chỉ đọc khi boot để hash + lưu DB
+
     # --- MCP Gateway (Flow 5 — cắm server thật) ---
     # Lấy endpoint từ: GET /gateway/api/v1/gateways/<name> → field `endpoint` (state=ACTIVE).
     # Để trống → catalog chỉ dùng mock providers.
@@ -102,7 +114,10 @@ class Settings(BaseSettings):
 
     @property
     def admin_ids(self) -> set[str]:
-        return {u.strip() for u in self.admin_user_ids.split(",") if u.strip()}
+        ids = {u.strip() for u in self.admin_user_ids.split(",") if u.strip()}
+        if self.admin_email:
+            ids.add(self.admin_email)
+        return ids
 
 
 def load_settings() -> Settings:

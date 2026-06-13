@@ -99,6 +99,18 @@ class FeedbackRow(Base):
     created_at: Mapped[str | None] = mapped_column(Text)
 
 
+class UserRow(Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    email: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    name: Mapped[str | None] = mapped_column(Text)
+    picture: Mapped[str | None] = mapped_column(Text)
+    role: Mapped[str] = mapped_column(Text, default="user")   # user | admin
+    hashed_password: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str | None] = mapped_column(Text)
+
+
 class ConvMetaRow(Base):
     """Conversation metadata — ghi độc lập với memory backend để /history luôn hoạt động."""
 
@@ -475,6 +487,45 @@ class SqlConvMetaRepo:
                 delete(ConvMetaRow)
                 .where(ConvMetaRow.user_id == user_id, ConvMetaRow.agent_name == agent_name)
             )
+            s.commit()
+
+
+class SqlUserRepo:
+    def __init__(self, engine: Engine):
+        self._engine = engine
+
+    def get_by_email(self, email: str) -> UserRow | None:
+        with Session(self._engine) as s:
+            return s.execute(select(UserRow).where(UserRow.email == email)).scalar_one_or_none()
+
+    def upsert_google(self, sub: str, email: str, name: str, picture: str) -> UserRow:
+        with Session(self._engine) as s:
+            row = s.execute(select(UserRow).where(UserRow.email == email)).scalar_one_or_none()
+            if row:
+                row.name = name
+                row.picture = picture
+            else:
+                row = UserRow(id=sub, email=email, name=name, picture=picture, role="user", created_at=now_iso())
+                s.add(row)
+            s.commit()
+            s.refresh(row)
+            return row
+
+    def seed_admin(self, email: str, hashed_password: str) -> None:
+        with Session(self._engine) as s:
+            row = s.execute(select(UserRow).where(UserRow.email == email)).scalar_one_or_none()
+            if row:
+                row.role = "admin"
+                row.hashed_password = hashed_password
+            else:
+                s.add(UserRow(
+                    id=f"admin_{email}",
+                    email=email,
+                    name="Admin",
+                    role="admin",
+                    hashed_password=hashed_password,
+                    created_at=now_iso(),
+                ))
             s.commit()
 
 

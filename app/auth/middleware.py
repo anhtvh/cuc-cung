@@ -1,18 +1,50 @@
-"""User identity (design §6): contest đọc header X-User-Id (user switcher trên UI);
-production swap file này sang OIDC/SSO — user_id đã đi qua MỘT chỗ duy nhất.
+"""Auth middleware — JWT cookie → request.state.user (UserInfo | GuestUser).
 
-I-02 SECURITY NOTE: X-User-Id có thể bị giả mạo bởi bất kỳ client nào (kể cả
-đặt "admin" để access trang Review). Đây là trade-off cố ý cho môi trường contest
-internal — production PHẢI swap sang OIDC/SSO trước khi expose ra internet.
+Cookie "session" (httpOnly, SameSite=Lax) được set bởi /auth/google/callback và /auth/login.
+request.state.user_id: str — dùng bởi toàn bộ code hiện tại (backward compat).
+request.state.user: UserInfo | GuestUser — dùng bởi code mới cần role/email.
 """
+
+import logging
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
-DEFAULT_USER = "anonymous"
+from app.auth.jwt_utils import verify
+from app.auth.models import GuestUser, UserInfo
+
+log = logging.getLogger(__name__)
 
 
-class UserIdMiddleware(BaseHTTPMiddleware):
+class AuthMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app, jwt_secret: str = "", guest_mode: bool = True):
+        super().__init__(app)
+        self._secret = jwt_secret
+        self._guest_mode = guest_mode
+
     async def dispatch(self, request: Request, call_next):
-        request.state.user_id = request.headers.get("X-User-Id", DEFAULT_USER).strip() or DEFAULT_USER
+        token = request.cookies.get("session")
+        user: UserInfo | GuestUser = GuestUser()
+
+        if token:
+            payload = verify(token, self._secret)
+            if payload:
+                try:
+                    user = UserInfo(
+                        id=payload["sub"],
+                        email=payload["email"],
+                        name=payload.get("name", ""),
+                        picture=payload.get("picture", ""),
+                        role=payload.get("role", "user"),
+                    )
+                except (KeyError, TypeError):
+                    log.warning("JWT payload malformed, treating as guest")
+
+        request.state.user = user
+        # backward compat: user_id = email cho logged-in, "guest" cho guest
+        request.state.user_id = user.email if isinstance(user, UserInfo) else "guest"
         return await call_next(request)
+
+
+# alias để main.py không cần đổi import
+UserIdMiddleware = AuthMiddleware

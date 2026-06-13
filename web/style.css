@@ -1760,3 +1760,149 @@ main { flex: 1; overflow: hidden; display: flex; min-height: 0; }
   font-size: 12px; color: var(--tx3);
   margin: 16px 0 8px;
 }
+
+/* ─── Auth UI ────────────────────────────────────────────── */
+.btn-login {
+  background: var(--blue);
+  color: #fff;
+  border: none;
+  border-radius: var(--r1);
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.btn-login:hover { opacity: .85; }
+
+.user-info-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--r1);
+  transition: background .15s;
+}
+.user-info-pill:hover { background: rgba(255,255,255,.07); }
+
+.user-avatar-img {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.user-display-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tx);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-role-badge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 20px;
+  font-weight: 600;
+}
+.user-role-badge.admin { background: rgba(251,191,36,.18); color: #fbbf24; }
+.user-role-badge.user  { display: none; }
+
+.user-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: var(--s2);
+  border: 1px solid var(--bd);
+  border-radius: var(--r2);
+  padding: 8px 0;
+  min-width: 180px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  z-index: 100;
+}
+.user-dd-email {
+  padding: 4px 14px 8px;
+  font-size: 12px;
+  color: var(--tx3);
+  word-break: break-all;
+}
+.user-dd-item {
+  display: block;
+  padding: 8px 14px;
+  font-size: 13px;
+  color: var(--tx);
+  cursor: pointer;
+  transition: background .12s;
+}
+.user-dd-item:hover { background: rgba(255,255,255,.06); }
+
+#user-pill { position: relative; }
+
+.btn-google {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: #fff;
+  color: #1f1f1f;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: box-shadow .15s;
+}
+.btn-google:hover { box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+
+.auth-divider {
+  text-align: center;
+  margin: 16px 0;
+  position: relative;
+  color: var(--tx3);
+  font-size: 12px;
+}
+.auth-divider::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0; right: 0;
+  height: 1px;
+  background: var(--bd);
+}
+.auth-divider span {
+  position: relative;
+  background: var(--s1);
+  padding: 0 10px;
+}
+
+/* ─── My Agents ──────────────────────────────────────────── */
+.mp-review-note {
+  font-size: 12px;
+  color: #f87171;
+  background: rgba(248,113,113,.08);
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin: 6px 0;
+}
+.mp-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.btn-sm-primary {
+  background: var(--blue) !important;
+  color: #fff !important;
+  border-color: transparent !important;
+}
+.btn-sm-danger {
+  background: rgba(248,113,113,.15) !important;
+  color: #f87171 !important;
+  border-color: rgba(248,113,113,.3) !important;
+}

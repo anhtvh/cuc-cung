@@ -3,51 +3,167 @@
 const $ = (sel) => document.querySelector(sel);
 
 const state = {
-  userId: localStorage.getItem("hub_user") || "an.nguyen",
+  userId: "guest",    // backward compat — sync từ /auth/me
+  user: null,         // { role, email, name, picture } | null (guest)
   stickyAgent: null,
-  adminIds: ["admin"],
   attachment: null,
   convStore: new Map(), // Map<agentKey, {key, agentName, agentMeta, container, lastText, updatedAt}>
 };
 
 const domainIcon = { legal: "⚖️", finance: "💰", sales: "📊", hr: "👥", ops: "⚙️", it: "💻" };
-const userLabels  = { "an.nguyen": "A", "binh.tran": "B", admin: "Ad" };
 
 function headers(extra = {}) {
-  return { "X-User-Id": state.userId, ...extra };
+  // Cookie được gửi tự động (same-origin) — không cần header auth thêm
+  return { ...extra };
 }
 
-/* ─── User switcher ─────────────────────────────────────── */
-const userSwitcher = $("#user-switcher");
-userSwitcher.value = state.userId;
-
-function syncAvatar() {
-  $("#user-avatar").textContent = userLabels[state.userId] || state.userId[0].toUpperCase();
+/* ─── Auth state ────────────────────────────────────────── */
+async function loadAuthState() {
+  try {
+    const me = await fetch("/auth/me").then((r) => r.json());
+    if (me.role === "guest") {
+      state.user = null;
+      state.userId = "guest";
+      if (!me.guest_mode) {
+        // GUEST_MODE=false — bắt buộc login, không được đóng modal
+        openAuthModal(false);
+      }
+    } else {
+      state.user = me;
+      state.userId = me.email;
+    }
+  } catch (_) {
+    state.user = null;
+    state.userId = "guest";
+  }
+  renderUserPill();
+  refreshTabsForUser();
 }
-syncAvatar();
 
-userSwitcher.addEventListener("change", () => {
-  state.userId = userSwitcher.value;
-  localStorage.setItem("hub_user", state.userId);
+function renderUserPill() {
+  const pill = $("#user-pill");
+  if (!pill) return;
+  if (state.user) {
+    const initials = (state.user.name || state.user.email || "?")[0].toUpperCase();
+    const avatar = state.user.picture
+      ? `<img src="${esc(state.user.picture)}" class="user-avatar-img" referrerpolicy="no-referrer">`
+      : `<div class="user-avatar">${initials}</div>`;
+    pill.innerHTML = `
+      <div class="user-info-pill" onclick="toggleUserMenu(event)">
+        ${avatar}
+        <span class="user-display-name">${esc(state.user.name || state.user.email)}</span>
+        <span class="user-role-badge ${state.user.role}">${state.user.role === "admin" ? "Admin" : ""}</span>
+        <span style="font-size:10px;opacity:.5">▾</span>
+      </div>
+      <div class="user-dropdown" id="user-dropdown" hidden>
+        <div class="user-dd-email">${esc(state.user.email)}</div>
+        <hr style="border-color:rgba(255,255,255,.08);margin:6px 0">
+        <a class="user-dd-item" onclick="doLogout()">Đăng xuất</a>
+      </div>`;
+  } else {
+    pill.innerHTML = `<button class="btn-login" onclick="openAuthModal(true)">Đăng nhập</button>`;
+  }
+}
+
+function toggleUserMenu(e) {
+  e.stopPropagation();
+  const dd = $("#user-dropdown");
+  if (dd) dd.hidden = !dd.hidden;
+}
+document.addEventListener("click", () => {
+  const dd = $("#user-dropdown");
+  if (dd) dd.hidden = true;
+});
+
+async function doLogout() {
+  await fetch("/auth/logout", { method: "POST" });
+  state.user = null;
+  state.userId = "guest";
   state.stickyAgent = null;
   state.convStore.clear();
-  clearAttachments();
-  hideMentionDropdown();
+  renderUserPill();
+  refreshTabsForUser();
+  loadCatalog();
+  loadHomeAgents();
   $("#messages").innerHTML = "";
   updateChatHeader(null);
   renderSidebar();
-  syncAvatar();
-  refreshTabsForUser();
-  loadCatalog();
-  refreshAgentsCache();
   showWelcome();
-});
+}
+
+/* ─── Auth modal ────────────────────────────────────────── */
+let _authModalRequired = false;
+
+function openAuthModal(canClose = true) {
+  _authModalRequired = !canClose;
+  $("#auth-modal").hidden = false;
+  const closeBtn = $("#auth-modal-close");
+  if (closeBtn) closeBtn.hidden = !canClose;
+  const guestNote = $("#auth-guest-note");
+  if (guestNote) guestNote.hidden = !canClose;
+  // Ẩn Google button nếu không có config — FE tự check qua feature probe
+  fetch("/auth/google").then((r) => {
+    if (r.status === 501) {
+      const gs = $("#auth-google-section");
+      if (gs) gs.hidden = true;
+      const div = $("#auth-divider");
+      if (div) div.hidden = true;
+    }
+  }).catch(() => {});
+}
+
+function closeAuthModal() {
+  if (_authModalRequired) return;
+  $("#auth-modal").hidden = true;
+  $("#auth-error").textContent = "";
+}
+
+window.loginGoogle = function() {
+  window.location.href = "/auth/google";
+};
+
+window.submitAdminLogin = async function() {
+  const email = $("#admin-email").value.trim();
+  const password = $("#admin-password").value;
+  const errEl = $("#auth-error");
+  errEl.textContent = "";
+  if (!email || !password) { errEl.textContent = "Nhập email và mật khẩu"; return; }
+  try {
+    const r = await fetch("/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!r.ok) {
+      const d = await r.json();
+      errEl.textContent = d.detail || "Đăng nhập thất bại";
+      return;
+    }
+    const me = await r.json();
+    state.user = me;
+    state.userId = me.email;
+    $("#auth-modal").hidden = true;
+    renderUserPill();
+    refreshTabsForUser();
+    loadCatalog();
+    loadHomeAgents();
+    restoreHistoryFromServer();
+  } catch (_) {
+    errEl.textContent = "Lỗi kết nối, thử lại";
+  }
+};
 
 function refreshTabsForUser() {
-  const isAdmin = state.adminIds.includes(state.userId);
+  const isAdmin = state.user?.role === "admin";
+  const isLoggedIn = !!state.user;
   $("#review-tab").hidden = !isAdmin;
   $("#stats-tab").hidden = !isAdmin;
+  $("#myagents-tab").hidden = !isLoggedIn;
+  // Sidebar chỉ show với logged-in user
+  const sidebar = $("#chat-sidebar");
+  if (sidebar) sidebar.style.display = isLoggedIn ? "" : "none";
   if (!isAdmin && ($("#panel-review").classList.contains("active") || $("#panel-stats").classList.contains("active"))) switchTab("home");
+  if (!isLoggedIn && $("#panel-myagents").classList.contains("active")) switchTab("home");
 }
 
 /* ─── Tabs ──────────────────────────────────────────────── */
@@ -58,10 +174,11 @@ document.querySelectorAll(".tab").forEach((btn) =>
 window.switchTab = function(name) {
   document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
   document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("active", p.id === `panel-${name}`));
-  if (name === "catalog") loadCatalog();
-  if (name === "review")  loadReview();
-  if (name === "home")    loadHomeAgents();
-  if (name === "stats")   loadStats();
+  if (name === "catalog")  loadCatalog();
+  if (name === "review")   loadReview();
+  if (name === "home")     loadHomeAgents();
+  if (name === "stats")    loadStats();
+  if (name === "myagents") loadMyAgents();
   if (name === "chat" && !$("#messages").children.length) showWelcome();
 };
 
@@ -161,7 +278,7 @@ async function showWelcome() {
   try { agents = await fetch("/agents", { headers: headers() }).then((r) => r.json()); } catch (_) {}
   const active = agents.filter((a) => a.status === "public");
 
-  const rawName = state.userId.split(".")[0];
+  const rawName = state.user ? (state.user.name || state.user.email).split(/[@. ]/)[0] : "bạn";
   const hello = rawName.charAt(0).toUpperCase() + rawName.slice(1);
   const welcome = document.createElement("div");
   welcome.id = "welcome";
@@ -1901,9 +2018,117 @@ async function restoreHistoryFromServer() {
   } catch (_) {}
 }
 
+/* ─── My Agents ─────────────────────────────────────────── */
+async function loadMyAgents() {
+  const grid = $("#myagents-list");
+  if (!grid) return;
+  if (!state.user) { grid.innerHTML = `<p class="empty">Vui lòng đăng nhập để xem agent của bạn.</p>`; return; }
+  grid.innerHTML = `<p class="empty">Đang tải…</p>`;
+  try {
+    const agents = await fetch("/agents/mine", { headers: headers() }).then((r) => r.json());
+    if (!agents.length) {
+      grid.innerHTML = `<p class="empty">Bạn chưa tạo agent nào. <button class="link-btn-inline" onclick="startChatWith('master','')">Tạo ngay →</button></p>`;
+      return;
+    }
+    const statusBadge = { private: "Nháp", pending_review: "Chờ duyệt", public: "Đang dùng", rejected: "Từ chối" };
+    const statusColor = { private: "#94a3b8", pending_review: "#fbbf24", public: "#6ee7b7", rejected: "#f87171" };
+    grid.innerHTML = agents.map((a) => {
+      const st = a.status;
+      const color = statusColor[st] || "#94a3b8";
+      const label = statusBadge[st] || st;
+      const canEdit = st !== "pending_review";
+      const canDelete = a.visibility === "private";
+      const canSubmit = st === "private";
+      const canResubmit = st === "rejected";
+      return `<div class="mp-card">
+        <div class="mp-card-hd">
+          <span class="mp-icon">${domainIcon[a.domain] || "🤖"}</span>
+          <span class="mp-badge" style="background:${color}22;color:${color}">${label}</span>
+        </div>
+        <div class="mp-name">${esc(a.name)}</div>
+        <div class="mp-desc">${esc(a.tagline || a.description.slice(0, 80))}</div>
+        ${a.review_note ? `<div class="mp-review-note">💬 ${esc(a.review_note)}</div>` : ""}
+        <div class="mp-actions">
+          ${canEdit ? `<button class="btn-sm" onclick="openAgentEditModal(${JSON.stringify(a)})">Sửa</button>` : ""}
+          ${canSubmit ? `<button class="btn-sm btn-sm-primary" onclick="submitMyAgent('${esc(a.name)}')">Gửi duyệt</button>` : ""}
+          ${canResubmit ? `<button class="btn-sm btn-sm-primary" onclick="submitMyAgent('${esc(a.name)}')">Gửi lại</button>` : ""}
+          ${canDelete ? `<button class="btn-sm btn-sm-danger" onclick="deleteMyAgent('${esc(a.name)}')">Xóa</button>` : ""}
+          <button class="btn-sm" onclick="startChatWith('${esc(a.name)}','')">Chat →</button>
+        </div>
+      </div>`;
+    }).join("");
+  } catch (e) {
+    grid.innerHTML = `<p class="empty">Lỗi tải danh sách: ${esc(String(e))}</p>`;
+  }
+}
+
+window.submitMyAgent = async function(name) {
+  try {
+    const r = await fetch(`/agents/${encodeURIComponent(name)}/submit`, { method: "POST", headers: headers() });
+    const d = await r.json();
+    if (!r.ok) { alert(d.detail || "Lỗi submit"); return; }
+    loadMyAgents();
+  } catch (e) { alert("Lỗi kết nối"); }
+};
+
+window.deleteMyAgent = async function(name) {
+  if (!confirm(`Xóa agent "${name}"? Hành động này không thể hoàn tác.`)) return;
+  const r = await fetch(`/agents/${encodeURIComponent(name)}`, { method: "DELETE", headers: headers() });
+  const d = await r.json();
+  if (!r.ok) { alert(d.detail || "Lỗi xóa"); return; }
+  loadMyAgents();
+  refreshAgentsCache();
+};
+
+window.openAgentEditModal = function(agent) {
+  $("#ae-name").value = agent.name;
+  $("#ae-tagline").value = agent.tagline || "";
+  $("#ae-description").value = agent.description || "";
+  $("#ae-prompt").value = agent.system_prompt || "";
+  $("#ae-domain").value = agent.domain || "";
+  $("#ae-visibility").value = agent.visibility || "private";
+  $("#ae-error").textContent = "";
+  $("#agent-edit-modal").hidden = false;
+};
+
+window.closeAgentEditModal = function() {
+  $("#agent-edit-modal").hidden = true;
+};
+
+window.saveAgentEdit = async function() {
+  const name = $("#ae-name").value;
+  const body = {
+    tagline: $("#ae-tagline").value.trim() || null,
+    description: $("#ae-description").value.trim() || null,
+    system_prompt: $("#ae-prompt").value.trim() || null,
+    domain: $("#ae-domain").value || null,
+    visibility: $("#ae-visibility").value || null,
+  };
+  const errEl = $("#ae-error");
+  errEl.textContent = "";
+  try {
+    const r = await fetch(`/agents/${encodeURIComponent(name)}`, {
+      method: "PUT",
+      headers: { ...headers(), "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!r.ok) { errEl.textContent = d.detail || "Lỗi lưu"; return; }
+    closeAgentEditModal();
+    loadMyAgents();
+    refreshAgentsCache();
+  } catch (e) { errEl.textContent = "Lỗi kết nối"; }
+};
+
 /* ─── Init ──────────────────────────────────────────────── */
-refreshTabsForUser();
-loadCatalog();
-loadHomeAgents();
-// Restore sidebar từ server sau khi agents cache đã load
-refreshAgentsCache().then(() => restoreHistoryFromServer());
+// 1. Load auth state trước, sau đó mới render tabs + catalog
+loadAuthState().then(() => {
+  loadCatalog();
+  loadHomeAgents();
+  // Restore sidebar chỉ khi đã login
+  if (state.user) {
+    refreshAgentsCache().then(() => restoreHistoryFromServer());
+  } else {
+    refreshAgentsCache();
+  }
+});
