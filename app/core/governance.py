@@ -377,6 +377,13 @@ class Governance:
                 "Cân nhắc thêm phạm vi rõ, format output, hoặc ví dụ cụ thể."
             )
 
+        # Tone/pronoun check
+        tone_ok = any(k in prompt_lower for k in ["xưng em", "xưng \"em\"", "xưng 'em'", "thân thiện", "gần gũi", "dễ thương"])
+        if not tone_ok:
+            warnings.append(
+                "Persona chưa có hướng dẫn xưng hô — thêm 'Xưng em, gọi user là bạn; tone thân thiện, gần gũi, dễ thương' vào đầu persona."
+            )
+
         # Connector alignment (soft)
         combined = (system_prompt + " " + description).lower()
         needs_web = any(k in combined for k in ["tìm kiếm", "search", "tra cứu", "internet", "thông tin mới nhất", "real-time"])

@@ -47,7 +47,7 @@ _ESCALATION_PROMPT_SUFFIX = """
 # Escalation
 
 Nếu user yêu cầu điều gì đó **nằm ngoài phạm vi chuyên môn của bạn**, hãy:
-1. Nói đúng một câu thân thiện, ví dụ: *"Câu này không thuộc chuyên môn của mình, để mình nhờ người phù hợp hơn nhé!"*
+1. Nói đúng một câu thân thiện, ví dụ: *"Câu này không thuộc chuyên môn của em, để em nhờ người phù hợp hơn nhé!"*
 2. Gọi tool `escalate` ngay — hệ thống sẽ tự tìm agent khác, user không cần làm gì.
 Tuyệt đối KHÔNG từ chối thẳng hay bảo user "hãy hỏi agent khác".
 """
@@ -62,10 +62,20 @@ Mục tiêu: trả lời user trong khoảng **1 phút**. KHÔNG cố tra cứu/
 - Nếu dữ liệu quá lớn hoặc cần nhiều bước tìm kiếm/đọc tài liệu: **ưu tiên tra cứu
   những phần liên quan nhất**, đủ để trả lời — không quét toàn bộ.
 - Khi không kịp xử lý hết: trả lời ngay trên **phần dữ liệu đã thu thập được**, và
-  nói rõ một câu ở cuối: *"Dữ liệu khá lớn nên mình phân tích trên những phần hiện
-  có; nếu cần mình đi sâu thêm phần nào, bạn cứ nói nhé."*
+  nói rõ một câu ở cuối: *"Dữ liệu khá lớn nên em phân tích trên những phần hiện
+  có; nếu cần em đi sâu thêm phần nào, bạn cứ nói nhé."*
 - TUYỆT ĐỐI không bịa dữ liệu để lấp chỗ chưa kịp đọc. Thà nêu rõ giới hạn còn hơn sai.
 - Nếu hệ thống nhắc *"đã chạm giới hạn thời gian (SLA)"* → dừng tra cứu, tổng hợp & trả lời ngay.
+"""
+
+_TONE_PROMPT_SUFFIX = """
+# Phong cách giao tiếp (BẮT BUỘC — không override)
+
+Xưng **em**, gọi user là **bạn** — luôn như vậy, mọi tin nhắn, không ngoại lệ.
+Tone **thân thiện, gần gũi, dễ thương** — như đồng nghiệp nhiệt tình hỗ trợ.
+Cuối câu trả lời: tóm tắt ngắn điểm chính và hỏi thêm nếu cần.
+Khi chưa rõ yêu cầu: hỏi lại nhẹ nhàng, không tự đoán.
+Đôi khi dùng emoji nhẹ nhàng 😊 — đừng lạm dụng, không phải câu nào cũng cần.
 """
 
 _WEB_SEARCH_PROMPT_SUFFIX = """
@@ -187,8 +197,9 @@ class ChatEngine:
         # SLA ~1 phút + xử lý dữ liệu lớn — áp dụng cho mọi agent (cả master).
         parts.append(_SLA_PROMPT_SUFFIX)
 
-        # Agent con: inject hướng dẫn escalate + web search.
+        # Agent con: enforce tone + escalate + web search.
         if agent.name != MASTER_AGENT_NAME:
+            parts.append(_TONE_PROMPT_SUFFIX)
             parts.append(_ESCALATION_PROMPT_SUFFIX)
             parts.append(_WEB_SEARCH_PROMPT_SUFFIX)
 
@@ -263,9 +274,10 @@ class ChatEngine:
         """extra_tools/extra_executor: bộ tool quản trị của master (builder plugin #1)."""
         # Auto-trigger: user chỉ tag agent (vd "@be-banh") không nói thêm gì
         # → inject trigger nêu rõ tên skill + pass auto_start để override persona ở cuối system prompt.
+        # KHÔNG trigger khi có attachment — user có thể gửi "@agent + file" để xử lý file cụ thể.
         _text_without_mentions = re.sub(r"@\S+", "", message).strip()
         auto_start = False
-        if not _text_without_mentions and agent.name != MASTER_AGENT_NAME:
+        if not _text_without_mentions and not attachment and agent.name != MASTER_AGENT_NAME:
             agent_skills = self._agents.skills_of(agent.name)
             if agent_skills:
                 auto_start = True
