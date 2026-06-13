@@ -1,6 +1,7 @@
 """Auth endpoints: Google OAuth2 + admin password login."""
 
 import logging
+import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
@@ -17,6 +18,12 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 _COOKIE = "session"
 _COOKIE_OPTS = dict(httponly=True, samesite="lax", secure=False)  # secure=True khi HTTPS
+_STATE_COOKIE = "oauth_state"  # chống CSRF login: state sinh ở /google, đối chiếu ở callback
+
+
+def _is_secure(settings) -> bool:
+    # COOKIE_SECURE ghi đè; fallback: sqlite local = False, ngược lại = True.
+    return settings.cookie_secure if settings.cookie_secure is not None else not settings.database_url.startswith("sqlite:///")
 
 
 def _set_session(response: Response, user: UserInfo, settings) -> None:
@@ -25,18 +32,20 @@ def _set_session(response: Response, user: UserInfo, settings) -> None:
         settings.jwt_secret,
         settings.jwt_expire_hours,
     )
-    # secure=True khi production HTTPS (AgentBase serve HTTPS)
-    is_secure = not settings.database_url.startswith("sqlite:///")
-    response.set_cookie(_COOKIE, token, httponly=True, samesite="lax", secure=is_secure, max_age=settings.jwt_expire_hours * 3600)
+    response.set_cookie(_COOKIE, token, httponly=True, samesite="lax", secure=_is_secure(settings), max_age=settings.jwt_expire_hours * 3600)
 
 
 @router.get("/google")
 def google_login(request: Request, c: Container = Depends(get_container)):
     if not c.settings.google_client_id:
         raise HTTPException(status_code=501, detail="Google OAuth chưa được cấu hình (GOOGLE_CLIENT_ID trống)")
-    redirect_uri = get_redirect_uri(request)
-    url = build_auth_url(c.settings.google_client_id, redirect_uri)
-    return RedirectResponse(url)
+    redirect_uri = get_redirect_uri(request, c.settings.google_redirect_base)
+    # Sinh state ngẫu nhiên, lưu cookie httpOnly để đối chiếu ở callback (chống CSRF login).
+    state = secrets.token_urlsafe(24)
+    url = build_auth_url(c.settings.google_client_id, redirect_uri, state=state)
+    response = RedirectResponse(url)
+    response.set_cookie(_STATE_COOKIE, state, httponly=True, samesite="lax", secure=_is_secure(c.settings), max_age=600)
+    return response
 
 
 @router.get("/google/callback")
@@ -44,16 +53,28 @@ async def google_callback(
     code: str,
     request: Request,
     c: Container = Depends(get_container),
+    state: str = "",
 ):
     if not c.settings.google_client_id:
         raise HTTPException(status_code=501, detail="Google OAuth chưa được cấu hình")
 
-    redirect_uri = get_redirect_uri(request)
+    # Đối chiếu state với cookie đã set ở /google — chặn CSRF/login fixation.
+    cookie_state = request.cookies.get(_STATE_COOKIE)
+    if not cookie_state or not state or not secrets.compare_digest(cookie_state, state):
+        raise HTTPException(status_code=400, detail="State không hợp lệ — vui lòng đăng nhập lại")
+
+    redirect_uri = get_redirect_uri(request, c.settings.google_redirect_base)
     try:
         info = await exchange_code(code, c.settings.google_client_id, c.settings.google_client_secret, redirect_uri)
     except Exception as e:
         log.error("Google OAuth exchange failed: %s", e)
         raise HTTPException(status_code=400, detail="Không thể xác thực với Google — thử lại") from e
+
+    # Chỉ chấp nhận email đã được Google xác minh — quyền sở hữu/admin đều dựa trên email.
+    if info.get("email_verified") not in (True, "true", "True"):
+        raise HTTPException(status_code=403, detail="Email Google chưa được xác minh — không thể đăng nhập")
+    if not info.get("email"):
+        raise HTTPException(status_code=400, detail="Google không trả về email")
 
     row = c.user_repo.upsert_google(
         sub=info.get("sub", info.get("id", "")),
@@ -65,6 +86,7 @@ async def google_callback(
 
     response = RedirectResponse("/web/", status_code=302)
     _set_session(response, user, c.settings)
+    response.delete_cookie(_STATE_COOKIE)  # state dùng 1 lần
     return response
 
 
@@ -83,6 +105,10 @@ def admin_login(body: LoginRequest, c: Container = Depends(get_container)):
         raise HTTPException(status_code=401, detail="Email hoặc mật khẩu không đúng")
     if not verify_password(body.password, row.hashed_password):
         raise HTTPException(status_code=401, detail="Email hoặc mật khẩu không đúng")
+    # Nguồn sự thật quyền admin là admin_ids (is_admin đọc từ đây). Chặn user role=admin
+    # trong DB nhưng KHÔNG nằm trong admin_ids — tránh "đăng nhập admin nhưng 403 mọi nơi".
+    if body.email not in c.settings.admin_ids:
+        raise HTTPException(status_code=403, detail="Tài khoản không có quyền admin trong cấu hình hệ thống")
 
     user = UserInfo(id=row.id, email=row.email, name=row.name or "Admin", picture="", role="admin")
     response_data = {"ok": True, "email": user.email, "name": user.name, "role": user.role}

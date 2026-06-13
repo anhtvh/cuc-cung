@@ -75,11 +75,13 @@ MASTER_TOOLS: list[ToolDef] = [
             "type": "object",
             "properties": {
                 "name": {"type": "string"},
+                "tagline": {"type": "string", "description": "Mô tả ngắn hiển thị UI (≤80 ký tự)"},
                 "description": {"type": "string"},
                 "system_prompt": {"type": "string"},
                 "domain": {"type": "string"},
                 "connectors": {"type": "array", "items": {"type": "string"}},
                 "visibility": {"type": "string", "enum": ["company", "private"]},
+                "escalate_enabled": {"type": "boolean", "description": "Cho phép agent tự chuyển yêu cầu ngoài phạm vi về Master"},
             },
             "required": ["name"],
         },
@@ -230,6 +232,42 @@ MASTER_TOOLS: list[ToolDef] = [
 ]
 
 
+# Tool thuộc luồng tạo/quản trị agent — guest KHÔNG được dùng, phải đăng nhập trước.
+# Gồm cả tool ghi (mutate registry) lẫn tool phụ trợ build (fetch_url chưng cất skill,
+# self_test_agent test agent vừa tạo) — guest chỉ chat + dùng agent public.
+_GUEST_BLOCKED_TOOLS = {
+    "create_agent",
+    "create_skill",
+    "update_agent",
+    "delete_agent",
+    "attach_skill",
+    "submit_for_review",
+    "fetch_url",
+    "self_test_agent",
+}
+
+# Tool cấp cho master khi user là guest: bỏ các tool ghi, giữ read + delegate + run
+# để master vẫn trả lời và kết nối tới agent public bình thường.
+GUEST_MASTER_TOOLS: list[ToolDef] = [t for t in MASTER_TOOLS if t.name not in _GUEST_BLOCKED_TOOLS]
+
+# Chỉ thị thêm cho master khi user chưa đăng nhập — mời đăng nhập thay vì tạo agent.
+GUEST_BUILDER_NOTE = """
+# Người dùng CHƯA ĐĂNG NHẬP (khách)
+
+User hiện là **khách** — chỉ trải nghiệm chat và dùng agent công khai.
+- Bạn VẪN trả lời câu hỏi và kết nối họ tới agent công khai phù hợp như bình thường.
+- NHƯNG khách **KHÔNG thể tạo / sửa / xóa agent hay skill**.
+- Nếu khách muốn tạo/sửa/xóa agent: nói nhẹ nhàng rằng cần **đăng nhập trước**, mời họ bấm
+  nút **"Đăng nhập"** ở góc trên bên phải. TUYỆT ĐỐI không hứa sẽ tạo, không cố gọi tool tạo/sửa/xóa.
+"""
+
+# Thông báo khi guest cố gọi tool ghi (chốt chặn cứng — defense in depth).
+_GUEST_LOGIN_REQUIRED = (
+    "Tính năng này thuộc luồng tạo/quản trị agent — cần đăng nhập trước. Mời bạn đăng nhập "
+    "(nút 'Đăng nhập' ở góc trên bên phải) rồi thử lại nhé. 😊"
+)
+
+
 def _ok(payload: Any) -> ToolResult:
     return ToolResult(content=json.dumps(payload, ensure_ascii=False, default=str))
 
@@ -237,13 +275,14 @@ def _ok(payload: Any) -> ToolResult:
 class MasterToolset:
     """Bộ tool quản trị của master, bound theo user đang chat (quyền sở hữu Flow 2)."""
 
-    def __init__(self, agents, skills, governance: Governance, catalog, user_id: str, usage=None, tester=None, engine=None):
+    def __init__(self, agents, skills, governance: Governance, catalog, user_id: str, *, is_guest: bool = False, usage=None, tester=None, engine=None):
         self._agents = agents
         self._skills = skills
         self._gov = governance
         self._catalog = catalog
         self._usage = usage
         self._user_id = user_id
+        self._is_guest = is_guest
         self._tester = tester      # AgentTester | None (HM3)
         self._engine = engine      # ChatEngine | None (orchestration)
         self._orchestration_count = 0  # đếm per-request, reset tự nhiên mỗi request mới
@@ -254,12 +293,23 @@ class MasterToolset:
         handler = getattr(self, f"_h_{name}", None)
         if handler is None:
             return ToolResult(content=f"tool không tồn tại: {name}", is_error=True)
+        # Chốt chặn cứng: guest không được tạo/sửa/xóa dù tool có lọt vào danh sách.
+        if self._is_guest and name in _GUEST_BLOCKED_TOOLS:
+            log.info("master tool BLOCKED (guest) %s user=%s", name, self._user_id)
+            return ToolResult(content=_GUEST_LOGIN_REQUIRED, is_error=True)
+        log.info("master tool CALL %s user=%s args=%s", name, self._user_id, list(args.keys()))
         try:
-            return handler(args)
+            result = handler(args)
+            if result.is_error:
+                log.warning("master tool FAIL %s → %s", name, result.content[:200])
+            else:
+                log.info("master tool OK %s", name)
+            return result
         except GovernanceError as e:
+            log.warning("master tool GOVERNANCE_ERR %s → %s", name, e)
             return ToolResult(content=str(e), is_error=True)
         except Exception as e:  # noqa: BLE001 — lỗi bất ngờ cũng trả về model, không vỡ stream
-            log.exception("master tool %s lỗi", name)
+            log.exception("master tool EXCEPTION %s", name)
             return ToolResult(content=f"lỗi hệ thống: {e}", is_error=True)
 
     # --- read ---
@@ -511,8 +561,13 @@ class MasterToolset:
             return ToolResult(content=f"agent '{agent_name}' không tồn tại.", is_error=True)
         if not self._gov.can_edit(agent, self._user_id):
             return ToolResult(content=f"chỉ người tạo ({agent.created_by}) hoặc admin được gắn skill vào '{agent_name}'.", is_error=True)
-        if self._skills.get(skill_name) is None:
+        skill = self._skills.get(skill_name)
+        if skill is None:
             return ToolResult(content=f"skill '{skill_name}' không tồn tại — list_skills để xem catalog.", is_error=True)
+        # Chặn rò rỉ skill private của người khác: chỉ gắn được skill public,
+        # skill của chính mình, hoặc khi là admin (giống bộ lọc của list_skills).
+        if skill.status != ItemStatus.public and skill.created_by != self._user_id and not self._gov.is_admin(self._user_id):
+            return ToolResult(content=f"skill '{skill_name}' là private của người khác — không gắn được. list_skills để xem skill bạn được dùng.", is_error=True)
         self._agents.attach_skill(agent_name, skill_name)
         return _ok({"attached": {"agent": agent_name, "skill": skill_name}})
 

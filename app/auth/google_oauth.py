@@ -44,8 +44,10 @@ async def exchange_code(code: str, client_id: str, client_secret: str, redirect_
         return info_resp.json()
 
 
-def get_redirect_uri(request) -> str:
-    """Auto-detect redirect_uri từ request — hoạt động local + AgentBase (behind proxy)."""
+def get_redirect_uri(request, base_url: str = "") -> str:
+    """Auto-detect redirect_uri. Nếu GOOGLE_REDIRECT_BASE set → dùng cố định (tránh host-header injection)."""
+    if base_url:
+        return f"{base_url.rstrip('/')}/auth/google/callback"
     proto = request.headers.get("x-forwarded-proto") or request.url.scheme
     host = request.headers.get("x-forwarded-host") or request.url.netloc
     return f"{proto}://{host}/auth/google/callback"

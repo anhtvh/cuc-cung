@@ -3,8 +3,8 @@
 AgentBase Gateway trỏ vào POST /mcp này. Khi MCP_GATEWAY_ENDPOINT được set,
 McpGatewayProvider gọi gateway → gateway forward vào đây → WebSearchProvider thực thi.
 
-Inbound auth do gateway lo (IAM Bearer token) trước khi forward.
-Endpoint này không cần auth riêng vì chỉ gateway mới biết địa chỉ nội bộ.
+Bảo vệ: nếu MCP_GATEWAY_SECRET được set, yêu cầu header X-Mcp-Secret khớp.
+Để trống = cho phép local dev không cần secret (không deploy public).
 """
 
 import json
@@ -36,6 +36,10 @@ async def mcp_handler(
     c: Container = Depends(get_container),
 ) -> JSONResponse:
     """JSON-RPC 2.0 handler — hỗ trợ tools/list và tools/call."""
+    secret = c.settings.mcp_gateway_secret
+    if secret and request.headers.get("X-Mcp-Secret", "") != secret:
+        return JSONResponse({"error": "Unauthorized"}, status_code=403)
+
     try:
         body = await request.json()
     except Exception:

@@ -1,9 +1,11 @@
+import secrets
 from datetime import datetime, timedelta, timezone
 
 import jwt
 
 _ALGORITHM = "HS256"
-_FALLBACK_SECRET = "dev-only-insecure-secret-change-in-production"
+# Sinh random mỗi lần boot: session bị invalidate khi restart nhưng không có secret cố định công khai trong repo.
+_FALLBACK_SECRET = secrets.token_hex(32)
 
 
 def sign(payload: dict, secret: str, expire_hours: int = 168) -> str:

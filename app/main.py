@@ -152,6 +152,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # web-search: swap gateway ↔ local tùy env — tool name giữ nguyên "web-search"
     # nên prompt + agent config không đổi khi chuyển qua gateway.
     if settings.mcp_gateway_endpoint:
+        # Bảo mật: khi đã expose qua gateway public mà /mcp không có secret thì ai cũng
+        # gọi được web-search/fetch của hệ thống → cảnh báo to để không quên set lúc deploy.
+        if not settings.mcp_gateway_secret:
+            logging.getLogger(__name__).warning(
+                "MCP_GATEWAY_ENDPOINT đã set nhưng MCP_GATEWAY_SECRET trống — /mcp đang mở công khai. "
+                "Set MCP_GATEWAY_SECRET trước khi deploy public."
+            )
         _iam = IamTokenProvider(settings.greennode_client_id, settings.greennode_client_secret)
         web_search_provider = McpGatewayProvider(
             server_name=settings.mcp_gateway_server_name,
