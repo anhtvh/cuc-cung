@@ -32,11 +32,13 @@ def test_mention_routes_by_slug(agents, governance, fake_llm):
     assert (d.agent_name, d.routed_by) == ("ThamDinhHopDong", "mention")
 
 
-def test_mention_unknown_slug_falls_through_to_classify(agents, governance, fake_llm):
-    fake_llm.classify_result = {"agent_name": "ThamDinhHopDong", "confidence": "high"}
+def test_mention_unknown_slug_routes_to_master_with_note(agents, governance, fake_llm):
+    """@mention slug không tồn tại → về master kèm note (không expose classify)."""
     router = _setup(agents, governance, fake_llm)
     d = router.route("user1", "@khong-ton-tai giúp tôi thẩm định hợp đồng")
-    assert (d.agent_name, d.routed_by) == ("ThamDinhHopDong", "classify")
+    assert d.agent_name == "master"
+    assert d.routed_by == "fallback_unknown_mention"
+    assert d.note and "@khong-ton-tai" in d.note
 
 
 def test_classify_routes_on_confidence(agents, governance, fake_llm):
@@ -76,3 +78,23 @@ def test_classify_error_falls_back_to_master(agents, governance):
     router = _setup(agents, governance, BrokenLLM())
     d = router.route("user1", "thẩm định hợp đồng")
     assert d.agent_name == "master"  # lỗi classify không được chặn chat
+
+
+def test_prefix_name_not_double_counted(agents, governance, fake_llm):
+    """Tên ngắn là prefix của tên dài không bị đếm trùng → không kích hoạt orchestrate sai."""
+    agents.create(make_agent(name="Bot", status=ItemStatus.public, created_by="x"))
+    agents.create(make_agent(name="Bot Pro", status=ItemStatus.public, created_by="x"))
+    router = IntentRouter(governance, fake_llm, router_model="cheap-model")
+    d = router.route("user1", "@Bot Pro giúp tôi việc này")
+    # Chỉ 1 agent thực sự được nhắc → mention tới "Bot Pro", KHÔNG phải orchestrate.
+    assert d.routed_by == "mention"
+    assert d.agent_name == "Bot Pro"
+
+
+def test_two_distinct_mentions_trigger_orchestrate(agents, governance, fake_llm):
+    """≥2 agent khác nhau được nhắc → Master điều phối."""
+    agents.create(make_agent(name="Bot Pro", status=ItemStatus.public, created_by="x"))
+    agents.create(make_agent(name="ThamDinhHopDong", status=ItemStatus.public, created_by="x"))
+    router = IntentRouter(governance, fake_llm, router_model="cheap-model")
+    d = router.route("user1", "@Bot Pro và @thamdinhhopdong cùng xử lý")
+    assert (d.agent_name, d.routed_by) == ("master", "orchestrate")

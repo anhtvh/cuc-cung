@@ -84,7 +84,8 @@ def ensure_seed(agents, skills) -> None:
         agents.create(
             Agent(
                 name="master",
-                description="Master Agent — factory tạo agent mới và trợ lý mặc định khi chưa có agent phù hợp.",
+                slug="daitongquan",
+                description="Đại tổng quản — tạo agent mới và điều phối khi chưa có agent phù hợp.",
                 system_prompt=master_prompt,
                 domain="system",
                 status=ItemStatus.public,
@@ -93,11 +94,19 @@ def ensure_seed(agents, skills) -> None:
                 reviewed_by="admin",
             )
         )
-        log.info("seed: tạo master agent")
-    elif master.system_prompt != master_prompt:
-        master.system_prompt = master_prompt
-        agents.update(master)
-        log.info("seed: cập nhật master system prompt từ master_system.md")
+        log.info("seed: tạo master agent (slug=daitongquan)")
+    else:
+        needs_update = False
+        if master.system_prompt != master_prompt:
+            master.system_prompt = master_prompt
+            needs_update = True
+            log.info("seed: cập nhật master system prompt từ master_system.md")
+        if master.slug != "daitongquan":
+            master.slug = "daitongquan"
+            needs_update = True
+            log.info("seed: cập nhật master slug → daitongquan")
+        if needs_update:
+            agents.update(master)
 
     # Demo data: chỉ khi DB rỗng (ngoài master).
     if not [a for a in agents.list() if a.name != "master"]:

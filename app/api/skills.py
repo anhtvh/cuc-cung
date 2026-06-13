@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.api.deps import Container, get_container, get_user_id
+from app.api.deps import Container, get_container, get_user_id, require_login
 from app.core.governance import GovernanceError
 from app.core.models import ItemStatus
 
@@ -38,10 +38,10 @@ def list_skills(
 def submit_skill(
     name: str,
     c: Container = Depends(get_container),
-    user_id: str = Depends(get_user_id),
+    user: object = Depends(require_login),
 ):
     try:
-        item = c.governance.submit_for_review("skill", name, user_id)
+        item = c.governance.submit_for_review("skill", name, user.email)
     except GovernanceError as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
     return {"submitted": name, "status": item.status.value}

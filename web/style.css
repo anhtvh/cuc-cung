@@ -210,6 +210,21 @@ main { flex: 1; overflow: hidden; display: flex; min-height: 0; }
 }
 .btn-ghost:hover { border-color: var(--bd2); background: var(--s2); }
 
+/* Guest login CTA banner on home */
+.home-guest-cta {
+  max-width: 900px;
+  margin: 0 auto 20px;
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: rgba(99,102,241,.1);
+  border: 1px solid rgba(99,102,241,.25);
+  border-radius: var(--r1);
+}
+.hgc-text { font-size: 13px; color: var(--tx2); }
+
 /* Features grid */
 .home-section { max-width: 900px; margin: 0 auto; padding: 0 24px 56px; }
 

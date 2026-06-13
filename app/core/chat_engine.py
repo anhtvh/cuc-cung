@@ -8,7 +8,7 @@ import logging
 import re
 from typing import Any, Iterator
 
-from app.core.models import MASTER_AGENT_NAME, Agent, ChatMessage
+from app.core.models import MASTER_AGENT_NAME, Agent, ChatMessage, ItemStatus
 from app.llm.base import Done, TextDelta, ToolCallEvent, ToolDef, ToolExecutor, ToolResult
 from app.tools.base import to_display
 
@@ -154,6 +154,9 @@ class ChatEngine:
             skill = self._skills.get(skill_name)
             if skill is None:
                 continue
+            # Bỏ qua skill đã bị từ chối — không đưa nội dung chưa/không được duyệt vào prompt.
+            if skill.status == ItemStatus.rejected:
+                continue
             content = skill.content
             # L-04: truncate skill lớn để tránh context overflow — cắt ở 8k chars
             if len(content) > self._MAX_SKILL_CHARS:
@@ -286,7 +289,14 @@ class ChatEngine:
         # Auto-trigger: user chỉ tag agent (vd "@be-banh") không nói thêm gì
         # → inject trigger nêu rõ tên skill + pass auto_start để override persona ở cuối system prompt.
         # KHÔNG trigger khi có attachment — user có thể gửi "@agent + file" để xử lý file cụ thể.
-        _text_without_mentions = re.sub(r"@\S+", "", message).strip()
+        # Cũ: re.sub(r"@\S+", "", message) — chỉ bắt slug ASCII, trượt khi UI gửi tên hiển thị
+        # có dấu/dấu cách (vd "@Bé Gà") → còn dư "Gà" nên auto_start không kích hoạt.
+        # Mới: strip đúng theo slug + name của chính agent này (case-insensitive).
+        _mention_patterns = [re.escape(f"@{agent.slug}")] if agent.slug else []
+        _mention_patterns.append(re.escape(f"@{agent.name}"))
+        _text_without_mentions = re.sub("|".join(_mention_patterns), "", message, flags=re.IGNORECASE).strip()
+        # Fallback: vẫn xóa các mention slug ASCII khác còn sót (vd tag kèm agent khác).
+        _text_without_mentions = re.sub(r"@[a-z][a-z0-9-]*", "", _text_without_mentions).strip()
         auto_start = False
         if not _text_without_mentions and not attachment and agent.name != MASTER_AGENT_NAME:
             agent_skills = self._agents.skills_of(agent.name)
@@ -406,6 +416,10 @@ class ChatEngine:
         finally:
             # Ghi memory kể cả khi stream đứt giữa chừng — giữ hội thoại nhất quán.
             full_text = "".join(assistant_text)
-            self._memory.append(user_id, agent.name, "user", stored_msg)
+            # auto_start: 'message' là câu lệnh hệ thống tự sinh, KHÔNG phải lời user.
+            # Lưu marker sạch thay vì câu lệnh đó — vẫn giữ cặp user/assistant để
+            # lượt sau không vỡ alternation, nhưng không làm bẩn ngữ cảnh hội thoại.
+            stored_user = "[Tự động bắt đầu]" if auto_start else stored_msg
+            self._memory.append(user_id, agent.name, "user", stored_user)
             if full_text:
                 self._memory.append(user_id, agent.name, "assistant", full_text)

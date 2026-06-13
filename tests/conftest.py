@@ -106,3 +106,10 @@ def make_skill(name="test-skill-mot", status=ItemStatus.private, created_by="mak
         created_by=created_by,
         **kw,
     )
+
+
+def attach_test_skill(agents, skills, agent_name="TestAgent", skill_name="test-skill-mot"):
+    """Tạo skill (nếu chưa có) và gắn vào agent — thoả ràng buộc 'agent phải có ≥1 skill'."""
+    if skills.get(skill_name) is None:
+        skills.create(make_skill(name=skill_name))
+    agents.attach_skill(agent_name, skill_name)

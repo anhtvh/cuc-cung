@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Agent Hub — AI agent cho doanh nghiệp</title>
-  <link rel="stylesheet" href="style.css?v=20260613c">
+  <link rel="stylesheet" href="style.css?v=20260614c">
 </head>
 <body>
 
@@ -46,11 +46,16 @@
         </div>
         <div class="path-card path-create" onclick="openQuickCreate()">
           <div class="path-icon">✨</div>
-          <div class="path-title">Đặt trợ lý riêng</div>
-          <div class="path-desc">Mô tả việc bạn cần — Đại tổng quản phỏng vấn và tạo agent chuyên biệt ngay. Dùng một mình hoặc chia sẻ cả nhóm.</div>
+          <div class="path-title">Đặt hàng trợ lý riêng</div>
+          <div class="path-desc">Mô tả việc bạn cần — Đại tổng quản tư vấn và tạo agent chuyên biệt ngay. Dùng một mình hoặc chia sẻ cả nhóm.</div>
           <div class="path-cta">Tạo ngay →</div>
         </div>
       </div>
+    </div>
+
+    <div id="home-guest-cta" class="home-guest-cta" hidden>
+      <span class="hgc-text">🔐 Đăng nhập để tạo agent riêng và lưu lịch sử trò chuyện</span>
+      <button class="btn-login" onclick="openAuthModal(true)">Đăng nhập →</button>
     </div>
 
     <div class="home-section">
@@ -395,6 +400,6 @@
   </div>
 </div>
 
-<script src="app.js?v=20260614a"></script>
+<script src="app.js?v=20260614c"></script>
 </body>
 </html>

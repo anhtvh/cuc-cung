@@ -159,6 +159,8 @@ function refreshTabsForUser() {
   $("#review-tab").hidden = !isAdmin;
   $("#stats-tab").hidden = !isAdmin;
   $("#myagents-tab").hidden = !isLoggedIn;
+  const guestCta = $("#home-guest-cta");
+  if (guestCta) guestCta.hidden = isLoggedIn;
   // Sidebar chỉ show với logged-in user
   const sidebar = $("#chat-sidebar");
   if (sidebar) sidebar.style.display = isLoggedIn ? "" : "none";
@@ -210,7 +212,7 @@ function renderHomeAgents() {
       : a.calls > 0
         ? `<span class="ahc-calls">${a.calls} lần</span>`
         : "";
-    return `<div class="ahc" onclick="startChatWith('${esc(a.name)}','${esc(a.tagline || a.description)}')">
+    return `<div class="ahc" onclick="startChatWith('${escJs(a.name)}','${escJs(a.tagline || a.description)}')">
       <span class="ahc-icon">${domainIcon[a.domain] || "🤖"}</span>
       <div class="ahc-name">${esc(a.name)}${callsBadge}</div>
       <div class="ahc-slug">@${esc(a.slug || a.name)}</div>
@@ -220,7 +222,7 @@ function renderHomeAgents() {
   });
 
   cards.push(`
-    <div class="ahc new-card" onclick="startChatWith('master','')">
+    <div class="ahc new-card" onclick="startBuilderChat()">
       <span class="ahc-icon">✨</span>
       <div class="ahc-name">Tạo agent mới</div>
       <div class="ahc-desc">Chat với Đại tổng quản để tạo agent chuyên biệt theo nghiệp vụ của bạn — không cần code.</div>
@@ -251,6 +253,8 @@ $("#home-domain-tabs")?.querySelectorAll(".hdt").forEach((btn) => {
 window.startChatWith = function(name, desc) {
   saveCurrentConv();
   state.stickyAgent = name;
+  _lastRoutedAgent = null;
+  _seenHandoffAgents = new Set();
   updateChatHeader(name);
   $("#messages").innerHTML = "";
   // Tạo entry trong convStore nếu chưa có
@@ -266,6 +270,16 @@ window.startChatWith = function(name, desc) {
     addHandoff("master", "");
   } else {
     addHandoff(name, desc);
+    // Auto-trigger khi agent có skill — gửi mention @slug để backend kích hoạt auto_start
+    const agentData = _agentsCache.find((a) => a.name === name);
+    if (agentData?.skills?.length > 0) {
+      setTimeout(() => {
+        // Chỉ trigger nếu user chưa gõ gì (không ghi đè input của user)
+        if (state.stickyAgent === name && !$("#chat-input").value.trim()) {
+          _triggerAgentAutoStart(name, agentData.slug || name);
+        }
+      }, 350);
+    }
   }
 };
 
@@ -307,7 +321,7 @@ async function showWelcome() {
       </button>
       <button class="welcome-path wp-create">
         <span class="welcome-path-icon">✨</span>
-        <div class="welcome-path-title">Đặt trợ lý riêng</div>
+        <div class="welcome-path-title">Đặt hàng trợ lý riêng</div>
         <div class="welcome-path-desc">Mô tả việc cần → mình tạo chuyên gia ngay tức thì</div>
       </button>
     </div>
@@ -320,6 +334,7 @@ async function showWelcome() {
     $("#chat-input").focus();
   });
   welcome.querySelector(".wp-create").addEventListener("click", () => {
+    if (!state.user) { promptLoginForCreate(); return; }
     state.stickyAgent = "master";
     updateChatHeader("master");
     $("#messages").innerHTML = "";
@@ -484,7 +499,7 @@ function addHandoff(name, description) {
     <div class="handoff-body">${
       isMaster
         ? "Chào bạn! Mình là <strong>Đại tổng quản</strong> — mình có thể giúp bạn tìm agent có sẵn hoặc tạo một agent chuyên biệt riêng. Bạn đang cần gì vậy? 😊"
-        : `Chào bạn! Mình là <strong>${esc(name)}</strong>${short ? " — " + esc(short) : ""}. Cứ hỏi thoải mái, mình ở đây rồi 😊`
+        : `Chào bạn! Em là <strong>${esc(name)}</strong>${short ? " — " + esc(short) : ""}. Cứ hỏi thoải mái, em ở đây rồi 😊`
     }</div>
     ${statusBadge}`;
   $("#messages").appendChild(card);
@@ -494,6 +509,120 @@ function addHandoff(name, description) {
 
 function scrollBottom() {
   $("#messages").scrollTop = $("#messages").scrollHeight;
+}
+
+/* Trigger auto-start cho agent có skill khi user mở chat bằng cách click card.
+   Gửi trực tiếp không qua form submit để không hiện user bubble rỗng. */
+async function _triggerAgentAutoStart(agentName, slug) {
+  if ($("#send-btn").disabled) return; // đang trong lượt chat khác
+  hideWelcome();
+  $("#send-btn").disabled = true;
+  showTyping();
+  builderTracker.reset();
+
+  let assistantDiv = null;
+  let assistantText = "";
+  const triggerMsg = `@${slug}`;
+
+  try {
+    const resp = await fetch("/chat", {
+      method: "POST",
+      headers: headers({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ message: triggerMsg, agent_name: agentName, attachment: null }),
+    });
+    if (!resp.ok) return;
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf("\n\n")) >= 0) {
+        const frame = buf.slice(0, idx);
+        buf = buf.slice(idx + 2);
+        const evMatch   = frame.match(/^event: (.+)$/m);
+        const dataMatch = frame.match(/^data: (.+)$/m);
+        if (!evMatch || !dataMatch) continue;
+        const ev   = evMatch[1];
+        const data = JSON.parse(dataMatch[1]);
+
+        if (ev === "delta") {
+          hideTyping();
+          if (!assistantDiv) {
+            const tag = "@" + agentName;
+            assistantDiv = addMsg("assistant", "", tag);
+          }
+          assistantText += data.text;
+          assistantDiv.querySelector(".msg-content").innerHTML = renderMarkdown(assistantText);
+          scrollBottom();
+        } else if (ev === "tool") {
+          hideTyping();
+          if (!assistantDiv) {
+            const tag = "@" + agentName;
+            assistantDiv = addMsg("assistant", "", tag);
+          }
+          if (assistantText.trim()) {
+            turnAddStep(assistantDiv, `<div class="ps-think">${renderMarkdown(assistantText)}</div>`, "think");
+            assistantText = "";
+            assistantDiv.querySelector(".msg-content").innerHTML = "";
+          }
+          turnAddStep(assistantDiv, toolStepHtml(data), data.is_error ? "err" : "");
+          showTyping();
+        } else if (ev === "delegate") {
+          // Agent con auto-start escalate → chuyển về Master (luôn là escalation ở đây).
+          _pendingDelegate = { agent_name: data.agent_name, message: data.message, isEscalation: true };
+          break; // dừng đọc frame — server đã return sau delegate, stream sẽ đóng
+        } else if (ev === "error") {
+          hideTyping();
+          addMsg("error", data.message);
+        }
+      }
+    }
+    hideTyping();
+    finalizeTurnProcess(assistantDiv);
+    if (assistantDiv) {
+      const mc = assistantDiv.querySelector(".msg-content");
+      if (mc) mc.innerHTML = renderMarkdown(assistantText);
+      if (assistantText) addFeedbackButtons(assistantDiv, agentName, assistantText);
+    }
+    // Auto-handoff khi agent auto-start escalate về Master (đồng bộ với handler chat chính).
+    if (_pendingDelegate) {
+      const { agent_name, message: delegateMsg } = _pendingDelegate;
+      _pendingDelegate = null;
+      addMsg("tool-note", `↩ Đang nhờ Đại tổng quản tìm người phù hợp hơn…`);
+      await new Promise((r) => setTimeout(r, 300));
+      await refreshAgentsCache();
+      state.stickyAgent = agent_name;
+      setCurrentAgent(agent_name);
+      if (!state.convStore.has(agent_name)) {
+        const _ad = _agentsCache.find((a) => a.name === agent_name);
+        state.convStore.set(agent_name, { key: agent_name, agentName: agent_name, agentMeta: _ad ? { domain: _ad.domain } : null, lastText: "", updatedAt: Date.now(), title: null, titleSent: true });
+      } else {
+        state.convStore.get(agent_name).updatedAt = Date.now();
+      }
+      renderSidebar();
+      const agentData = _agentsCache.find((a) => a.name === agent_name);
+      addHandoff(agent_name, agentData?.description || "");
+      // Gửi message escalate sang Master — không cần user gõ lại (đồng bộ handler chính).
+      $("#chat-input").value = delegateMsg;
+      submitChat();
+      return; // handoff tiếp quản; finally vẫn chạy để enable lại nút gửi
+    }
+    if (assistantText) {
+      const entry = state.convStore.get(agentName);
+      if (entry) { entry.lastText = assistantText.slice(0, 60); entry.updatedAt = Date.now(); }
+      renderSidebar();
+    }
+  } catch (_) {
+    hideTyping();
+  } finally {
+    $("#send-btn").disabled = false;
+    $("#chat-input").focus();
+  }
 }
 
 /* Tạo tiêu đề tự động từ tin nhắn đầu tiên (tối đa 48 ký tự, cắt ở ranh giới từ). */
@@ -716,6 +845,7 @@ function hideTyping() {
 let _lastRoutedAgent = null;
 let _typingTimers = [];
 let _pendingDelegate = null; // {agent_name, message} — set khi master delegate
+let _seenHandoffAgents = new Set(); // track agent đã hiện handoff card trong session hiện tại
 
 /* ─── Builder Tracker ───────────────────────────────────── */
 const builderTracker = {
@@ -1011,8 +1141,9 @@ $("#chat-form").addEventListener("submit", async (e) => {
           }
           renderSidebar();
 
-          // Handoff card khi agent thay đổi (không repeat trong sticky session)
-          if (data.agent_name !== _lastRoutedAgent && data.routed_by !== "explicit") {
+          // Handoff card khi agent thay đổi — chỉ chào 1 lần/agent/session
+          if (data.agent_name !== _lastRoutedAgent && data.routed_by !== "explicit" && !_seenHandoffAgents.has(data.agent_name)) {
+            _seenHandoffAgents.add(data.agent_name);
             addHandoff(data.agent_name, data.agent_description || "");
           }
           _lastRoutedAgent = data.agent_name;
@@ -1346,13 +1477,15 @@ function mpCard(a) {
   const meta = [domainLabel, callsBit].filter(Boolean).join(" · ");
   const safeTag = esc(tagline);
   const safeName = esc(a.name);
-  return `<div class="mp-card" onclick="startChatWith('${safeName}','${safeTag}')">
+  const jsTag = escJs(tagline);
+  const jsName = escJs(a.name);
+  return `<div class="mp-card" onclick="startChatWith('${jsName}','${jsTag}')">
     <div class="mp-card-icon">${icon}</div>
     <div class="mp-card-name">${safeName}</div>
     <div class="mp-card-tagline">${safeTag}</div>
     <div class="mp-card-footer">
       <div class="mp-card-meta">${esc(meta)}</div>
-      <button class="btn-talk" onclick="event.stopPropagation();startChatWith('${safeName}','${safeTag}')">Nói chuyện →</button>
+      <button class="btn-talk" onclick="event.stopPropagation();startChatWith('${jsName}','${jsTag}')">Nói chuyện →</button>
     </div>
   </div>`;
 }
@@ -1512,7 +1645,7 @@ window.decide = async (kind, name, action, btn) => {
     body = JSON.stringify({ reason });
   }
   if (btn) { btn.disabled = true; btn.textContent = action === "approve" ? "Đang duyệt…" : "Đang từ chối…"; }
-  const resp = await fetch(`/review/${kind}/${name}/${action}`, {
+  const resp = await fetch(`/review/${kind}/${encodeURIComponent(name)}/${action}`, {
     method: "POST",
     headers: headers({ "Content-Type": "application/json" }),
     body,
@@ -1572,8 +1705,25 @@ function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 }
 
+/* Escape cho JS string đơn bên trong HTML attribute onclick="...('${escJs(x)}',...)".
+   Escape \ ' \n \r trước, rồi HTML-escape " & để không phá vỡ attribute. */
+function escJs(s) {
+  return String(s ?? "")
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "\\'")
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;");
+}
+
 function highlightMentionsHtml(text) {
-  return esc(text).replace(/@([a-z][a-z0-9-]*)/g, '<span class="mention-tag">@$1</span>');
+  return esc(text).replace(/@([a-z][a-z0-9-]*)/g, (_, slug) => {
+    const isMaster = slug === "daitongquan" || slug === "master";
+    const a = isMaster ? null : _agentsCache.find(x => x.slug === slug);
+    const display = isMaster ? "Đại tổng quản" : (a?.name || slug);
+    return `<span class="mention-tag">@${esc(display)}</span>`;
+  });
 }
 
 /* Inline-level markdown: code, link, bold, italic, mention. Tự escape HTML. */
@@ -1701,7 +1851,7 @@ function selectMention(name) {
 }
 
 const _MASTER_MENTION_ENTRY = {
-  name: "Đại tổng quản", slug: "master",
+  name: "Đại tổng quản", slug: "daitongquan",
   description: "Tạo agent mới hoặc kết nối bạn với đúng chuyên gia",
   domain: "master", status: "public",
 };
@@ -1731,7 +1881,20 @@ const qc = {
   skillContent: "", skillFilename: null,
 };
 
+// Guest muốn tạo agent → mời đăng nhập (guest chỉ chat + dùng agent public).
+function promptLoginForCreate() {
+  openAuthModal(true);
+  showToast("Đăng nhập để tạo trợ lý riêng nhé! 😊");
+}
+
+// Vào luồng tạo agent qua chat với Đại tổng quản — guest phải đăng nhập trước.
+window.startBuilderChat = function () {
+  if (!state.user) { promptLoginForCreate(); return; }
+  startChatWith("master", "");
+};
+
 window.openQuickCreate = function () {
+  if (!state.user) { promptLoginForCreate(); return; }
   // reset state
   Object.assign(qc, { step: 1, name: "", domain: "legal", purpose: "", skillContent: "", skillFilename: null });
   $("#qc-name").value = "";
@@ -2036,10 +2199,15 @@ async function loadMyAgents() {
       const st = a.status;
       const color = statusColor[st] || "#94a3b8";
       const label = statusBadge[st] || st;
+      // Sửa được khi không đang chờ duyệt
       const canEdit = st !== "pending_review";
-      const canDelete = a.visibility === "private";
+      // Xóa được khi đang nháp hoặc bị từ chối (status-based, không phải visibility)
+      const canDelete = st === "private" || st === "rejected";
       const canSubmit = st === "private";
+      const canRetract = st === "pending_review";
       const canResubmit = st === "rejected";
+      // JSON safe cho data attribute: esc() đổi " → &quot; để không vỡ attribute
+      const safeAgent = esc(JSON.stringify(a));
       return `<div class="mp-card">
         <div class="mp-card-hd">
           <span class="mp-icon">${domainIcon[a.domain] || "🤖"}</span>
@@ -2049,8 +2217,9 @@ async function loadMyAgents() {
         <div class="mp-desc">${esc(a.tagline || a.description.slice(0, 80))}</div>
         ${a.review_note ? `<div class="mp-review-note">💬 ${esc(a.review_note)}</div>` : ""}
         <div class="mp-actions">
-          ${canEdit ? `<button class="btn-sm" onclick="openAgentEditModal(${JSON.stringify(a)})">Sửa</button>` : ""}
+          ${canEdit ? `<button class="btn-sm" data-agent="${safeAgent}" onclick="openAgentEditModal(JSON.parse(this.dataset.agent))">Sửa</button>` : ""}
           ${canSubmit ? `<button class="btn-sm btn-sm-primary" onclick="submitMyAgent('${esc(a.name)}')">Gửi duyệt</button>` : ""}
+          ${canRetract ? `<button class="btn-sm" onclick="retractMyAgent('${esc(a.name)}')">Hủy nộp duyệt</button>` : ""}
           ${canResubmit ? `<button class="btn-sm btn-sm-primary" onclick="submitMyAgent('${esc(a.name)}')">Gửi lại</button>` : ""}
           ${canDelete ? `<button class="btn-sm btn-sm-danger" onclick="deleteMyAgent('${esc(a.name)}')">Xóa</button>` : ""}
           <button class="btn-sm" onclick="startChatWith('${esc(a.name)}','')">Chat →</button>
@@ -2076,6 +2245,15 @@ window.deleteMyAgent = async function(name) {
   const r = await fetch(`/agents/${encodeURIComponent(name)}`, { method: "DELETE", headers: headers() });
   const d = await r.json();
   if (!r.ok) { alert(d.detail || "Lỗi xóa"); return; }
+  loadMyAgents();
+  refreshAgentsCache();
+};
+
+window.retractMyAgent = async function(name) {
+  if (!confirm(`Hủy nộp duyệt agent "${name}"?\nAgent sẽ về trạng thái Nháp, bạn có thể sửa và gửi lại.`)) return;
+  const r = await fetch(`/agents/${encodeURIComponent(name)}/retract`, { method: "POST", headers: headers() });
+  const d = await r.json();
+  if (!r.ok) { alert(d.detail || "Lỗi hủy nộp duyệt"); return; }
   loadMyAgents();
   refreshAgentsCache();
 };

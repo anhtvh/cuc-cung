@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from sqlalchemy import Boolean, Engine, ForeignKey, Index, Integer, Text, create_engine, delete, func, select, text
+from sqlalchemy import Boolean, Engine, ForeignKey, Index, Integer, Text, case, create_engine, delete, event, func, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 from app.core.models import Agent, ItemStatus, Skill, Visibility, now_iso
@@ -270,13 +270,26 @@ class SqlAgentRepo:
             q = select(AgentSkillRow.agent_name).where(AgentSkillRow.skill_name == skill_name)
             return list(s.scalars(q))
 
+    def skills_of_many(self, agent_names: list[str]) -> dict[str, list[str]]:
+        """Batch query — tránh N+1 khi liệt kê danh sách agent."""
+        if not agent_names:
+            return {}
+        with Session(self._engine) as s:
+            q = select(AgentSkillRow).where(AgentSkillRow.agent_name.in_(agent_names))
+            rows = list(s.scalars(q))
+        result: dict[str, list[str]] = {n: [] for n in agent_names}
+        for r in rows:
+            result[r.agent_name].append(r.skill_name)
+        return result
+
     def delete(self, name: str) -> None:
-        """Xóa agent + cascade: agent_skills, messages, usage_log, conv_meta."""
+        """Xóa agent + cascade: agent_skills, messages, usage_log, conv_meta, feedback_log."""
         with Session(self._engine) as s, s.begin():
             s.execute(delete(AgentSkillRow).where(AgentSkillRow.agent_name == name))
             s.execute(delete(MessageRow).where(MessageRow.agent_name == name))
             s.execute(delete(UsageRow).where(UsageRow.agent_name == name))
             s.execute(delete(ConvMetaRow).where(ConvMetaRow.agent_name == name))
+            s.execute(delete(FeedbackRow).where(FeedbackRow.agent_name == name))
             s.execute(delete(AgentRow).where(AgentRow.name == name))
 
 
@@ -311,6 +324,12 @@ class SqlSkillRepo:
             _skill_to_row(skill, row)
             s.commit()
         return skill
+
+    def delete(self, name: str) -> None:
+        """Xóa skill + cascade: agent_skills liên kết."""
+        with Session(self._engine) as s, s.begin():
+            s.execute(delete(AgentSkillRow).where(AgentSkillRow.skill_name == name))
+            s.execute(delete(SkillRow).where(SkillRow.name == name))
 
 
 class SqlUsageRepo:
@@ -382,11 +401,11 @@ class SqlUsageRepo:
         ]
 
     def distinct_users(self) -> int:
-        """Số user unique đã dùng hệ thống (qua messages)."""
+        """Số user unique đã dùng hệ thống (qua conv_meta — độc lập memory backend)."""
         with Session(self._engine) as s:
             return s.execute(
-                select(func.count(func.distinct(MessageRow.user_id)))
-                .where(MessageRow.user_id.is_not(None))
+                select(func.count(func.distinct(ConvMetaRow.user_id)))
+                .where(ConvMetaRow.user_id.is_not(None))
             ).scalar() or 0
 
 
@@ -411,12 +430,8 @@ class SqlFeedbackRepo:
             q = (
                 select(
                     FeedbackRow.agent_name,
-                    func.sum(
-                        func.iif(FeedbackRow.rating > 0, 1, 0)
-                    ).label("up"),
-                    func.sum(
-                        func.iif(FeedbackRow.rating < 0, 1, 0)
-                    ).label("down"),
+                    func.sum(case((FeedbackRow.rating > 0, 1), else_=0)).label("up"),
+                    func.sum(case((FeedbackRow.rating < 0, 1), else_=0)).label("down"),
                 )
                 .where(FeedbackRow.agent_name.is_not(None))
                 .group_by(FeedbackRow.agent_name)
@@ -532,4 +547,12 @@ class SqlUserRepo:
 def make_engine(database_url: str) -> Engine:
     # check_same_thread=False: SSE generator chạy trong threadpool của Starlette.
     kwargs = {"connect_args": {"check_same_thread": False}} if database_url.startswith("sqlite") else {}
-    return create_engine(database_url, **kwargs)
+    engine = create_engine(database_url, **kwargs)
+    if database_url.startswith("sqlite"):
+        @event.listens_for(engine, "connect")
+        def _set_sqlite_pragmas(dbapi_conn, _connection_record):
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA busy_timeout=5000")
+            cursor.close()
+    return engine

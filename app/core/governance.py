@@ -267,9 +267,29 @@ class Governance:
             raise GovernanceError(f"'{name}' đang chờ duyệt — đợi admin xử lý hoặc nhờ admin reject để sửa.")
 
         if item.status == ItemStatus.public:
-            merged = dict(fields)
-            self._validate_merged(kind, item, merged)
-            item.pending_changes = merged
+            # Hạ visibility xuống 'private' cho phép tức thì — siết quyền không cần duyệt.
+            # Visibility chỉ có {company, private}; chỉ 'private' là siết quyền, các thay
+            # đổi khác (kể cả nâng lại 'company') đi qua hàng chờ duyệt như mọi field khác.
+            vis_field = fields.get("visibility") if kind == "agent" else None
+            if vis_field is not None:
+                try:
+                    Visibility(vis_field)  # validate sớm, tránh giá trị rác
+                except ValueError as e:
+                    raise GovernanceError(f"visibility không hợp lệ: '{vis_field}'") from e
+            if vis_field == Visibility.private.value:
+                other_fields = {k: v for k, v in fields.items() if k != "visibility"}
+                item.visibility = Visibility.private
+                if other_fields:
+                    merged = dict(item.pending_changes or {})
+                    merged.update(other_fields)
+                    self._validate_merged(kind, item, merged)
+                    item.pending_changes = merged
+            else:
+                # Merge với pending_changes hiện có — tránh mất thay đổi lần trước chưa duyệt.
+                merged = dict(item.pending_changes or {})
+                merged.update(fields)
+                self._validate_merged(kind, item, merged)
+                item.pending_changes = merged
         else:  # draft | rejected → sửa trực tiếp, quay về draft
             self._validate_merged(kind, item, fields)
             for k, v in fields.items():
@@ -290,7 +310,10 @@ class Governance:
                 connectors=fields.get("connectors", item.connectors),
             )
             if "visibility" in fields:
-                Visibility(fields["visibility"])  # raise ValueError nếu sai
+                try:
+                    Visibility(fields["visibility"])
+                except ValueError as e:
+                    raise GovernanceError(f"visibility không hợp lệ: '{fields['visibility']}'") from e
         else:
             self.validate_skill_payload(
                 name=item.name,
@@ -304,7 +327,25 @@ class Governance:
             raise GovernanceError(f"Chỉ người tạo ({item.created_by}) hoặc admin được submit '{name}'.")
         if item.status != ItemStatus.private:
             raise GovernanceError(f"Chỉ submit được từ private (hiện tại: {item.status.value}).")
+        # Ràng buộc: agent con BẮT BUỘC có ≥1 skill — skill mã hoá quy trình/nguyên tắc
+        # để mỗi lần gọi agent đều nhất quán (kể cả agent chỉ dùng connector).
+        if kind == "agent" and not self._agents.skills_of(name):
+            raise GovernanceError(
+                f"Agent '{name}' chưa gắn skill nào — mọi agent con phải có ≥1 skill để chuẩn hoá "
+                "quy trình/nguyên tắc làm việc. Tạo skill (create_skill) rồi gắn (attach_skill) trước khi submit."
+            )
         item.status = ItemStatus.pending_review
+        repo = self._agents if kind == "agent" else self._skills
+        return repo.update(item)
+
+    def retract_submission(self, kind: str, name: str, user_id: str) -> Agent | Skill:
+        """Hủy nộp duyệt: pending_review → private (chỉ owner hoặc admin)."""
+        item = self._get_or_raise(kind, name)
+        if not self.can_edit(item, user_id):
+            raise GovernanceError(f"Chỉ người tạo ({item.created_by}) hoặc admin được hủy submit '{name}'.")
+        if item.status != ItemStatus.pending_review:
+            raise GovernanceError(f"Chỉ hủy được từ pending_review (hiện tại: {item.status.value}).")
+        item.status = ItemStatus.private
         repo = self._agents if kind == "agent" else self._skills
         return repo.update(item)
 

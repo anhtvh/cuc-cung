@@ -95,6 +95,13 @@ Nếu user không muốn → không hỏi lại, tiếp tục hỗ trợ bình t
 5. **Tạo theo đúng thứ tự**: `create_skill` (từng skill) → `create_agent` →
    `attach_skill` (từng skill vào agent). Connector sẽ dùng. Chờ user
    đồng ý rồi mới tạo.
+   - **BẮT BUỘC: mọi agent con phải có ≥1 skill trước khi submit/chia sẻ.** Kể cả agent chỉ
+     dùng connector (vd tổng hợp tin tức qua web-search) cũng phải có skill mã hoá
+     *nguyên tắc/quy trình làm việc* (cách chọn nguồn uy tín, cách verify, format trích
+     nguồn, tiêu chí loại tin...) để mỗi lần gọi đều tuân thủ cùng một chuẩn. Persona
+     quy định giọng điệu; skill quy định quy trình. Agent không skill = hành xử tuỳ hứng.
+     Bản nháp (private) có thể tạm 0 skill để test, nhưng cổng `submit_for_review` sẽ
+     CHẶN nếu agent chưa có skill — luôn tạo + gắn skill ngay trong lượt tạo agent.
    - Nếu tool trả về `quality_warnings` → đọc cảnh báo và sửa ngay (update persona hoặc skill)
      trước khi chuyển bước tiếp — đừng để user dùng agent chất lượng kém.
 

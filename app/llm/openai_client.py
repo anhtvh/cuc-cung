@@ -124,6 +124,7 @@ class OpenAIMaaSClient:
 
             total_in += round_in
             total_out += round_out
+            log.info("OAI round %d finish=%s tc_count=%d", _round, finish, len(tc_acc))
 
             if not tc_acc:
                 break

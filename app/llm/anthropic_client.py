@@ -33,7 +33,7 @@ _SLA_NUDGE = (
 
 # Câu trả lời an toàn khi 1 request tới MaaS bị timeout giữa chừng.
 _TIMEOUT_FALLBACK = (
-    "\n\n_(Xin lỗi, việc xử lý mất nhiều thời gian hơn dự kiến. Mình trả lời dựa trên "
+    "_(Xin lỗi, việc xử lý mất nhiều thời gian hơn dự kiến. Mình trả lời dựa trên "
     "dữ liệu đã có; bạn có thể hỏi lại để mình bổ sung phần còn thiếu nhé.)_"
 )
 
@@ -130,6 +130,8 @@ class AnthropicMaaSClient:
             total_in += final.usage.input_tokens
             total_out += final.usage.output_tokens
             stop_reason = final.stop_reason
+            log.info("LLM round %d stop_reason=%s content_types=%s", _round, stop_reason,
+                     [b.type for b in final.content])
 
             # Đã ép trả lời do quá SLA (vòng không tool) → kết thúc với stop_reason riêng.
             if over_sla:

@@ -47,6 +47,10 @@ def get_current_user(request: Request) -> UserInfo | GuestUser:
     return request.state.user
 
 
+def get_is_guest(request: Request) -> bool:
+    return request.state.is_guest
+
+
 def require_login(request: Request) -> UserInfo:
     """Trả UserInfo nếu đã đăng nhập, 401 nếu guest."""
     user = request.state.user

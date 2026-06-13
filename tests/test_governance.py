@@ -5,13 +5,17 @@ import pytest
 from app.core.governance import GovernanceError
 from app.core.models import ItemStatus
 
-from tests.conftest import make_agent, make_skill
+from tests.conftest import make_agent, make_skill, attach_test_skill
 
 
-def test_full_lifecycle_private_to_public(governance, agents):
+def test_full_lifecycle_private_to_public(governance, agents, skills):
     agents.create(make_agent())
+    attach_test_skill(agents, skills)
     governance.submit_for_review("agent", "TestAgent", "maker")
     assert agents.get("TestAgent").status == ItemStatus.pending_review
+    # skill phải active trước khi agent active (Flow 2b)
+    governance.submit_for_review("skill", "test-skill-mot", "maker")
+    governance.approve("skill", "test-skill-mot", "admin")
     governance.approve("agent", "TestAgent", "admin")
     assert agents.get("TestAgent").status == ItemStatus.public
 
@@ -22,11 +26,19 @@ def test_submit_only_from_private(governance, agents):
         governance.submit_for_review("agent", "TestAgent", "maker")
 
 
-def test_submit_only_owner_or_admin(governance, agents):
+def test_submit_only_owner_or_admin(governance, agents, skills):
     agents.create(make_agent())
+    attach_test_skill(agents, skills)
     with pytest.raises(GovernanceError, match="người tạo"):
         governance.submit_for_review("agent", "TestAgent", "ke-la")
     governance.submit_for_review("agent", "TestAgent", "admin")  # admin được
+
+
+def test_submit_agent_requires_skill(governance, agents):
+    """Ràng buộc mới: agent 0 skill không submit được."""
+    agents.create(make_agent())
+    with pytest.raises(GovernanceError, match="chưa gắn skill"):
+        governance.submit_for_review("agent", "TestAgent", "maker")
 
 
 def test_approve_requires_admin(governance, agents):
@@ -51,8 +63,9 @@ def test_agent_approve_blocked_by_non_active_skill(governance, agents, skills):
     assert agents.get("TestAgent").status == ItemStatus.public
 
 
-def test_reject_requires_reason_and_is_not_terminal(governance, agents):
+def test_reject_requires_reason_and_is_not_terminal(governance, agents, skills):
     agents.create(make_agent(status=ItemStatus.pending_review))
+    attach_test_skill(agents, skills)
     with pytest.raises(GovernanceError, match="lý do"):
         governance.reject("agent", "TestAgent", "admin", "  ")
     governance.reject("agent", "TestAgent", "admin", "description chưa rõ dùng khi nào")
