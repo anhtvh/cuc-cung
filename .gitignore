@@ -26,3 +26,4 @@ __pycache__/
 # Binary / không cần thiết
 *.docx
 *.pdf
+.env.deploy
