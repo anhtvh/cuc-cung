@@ -28,6 +28,7 @@ class FileAttachment(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     agent_name: str | None = None  # UI chọn / sticky session (client-side, Flow 1)
+    conversation_id: str | None = None  # thread key (nhiều cuộc/agent); None → fallback agent.name
     attachment: FileAttachment | None = None
 
 
@@ -84,13 +85,16 @@ def chat(
         else:
             extra_tools = MASTER_TOOLS
 
+    # Thread key: client gửi conversation_id (uuid). Chưa gửi (guest/client cũ) → fallback agent.name.
+    conv_id = req.conversation_id or agent.name
+
     def event_stream() -> Iterator[str]:
         # L-09: note được set khi sticky agent không còn visible → thông báo cho UI
-        yield _sse("meta", {"agent_name": agent.name, "agent_tagline": agent.tagline, "agent_description": agent.description, "agent_slug": agent.slug, "routed_by": decision.routed_by, "confidence": decision.confidence, "note": decision.note})
+        yield _sse("meta", {"agent_name": agent.name, "agent_tagline": agent.tagline, "agent_description": agent.description, "agent_slug": agent.slug, "routed_by": decision.routed_by, "confidence": decision.confidence, "note": decision.note, "conversation_id": conv_id})
         attachment = req.attachment.model_dump() if req.attachment else None
         _last_text: list[str] = []  # mutable container để thu text cuối
         try:
-            for ev in c.engine.stream(user_id, agent, req.message, attachment=attachment, extra_tools=extra_tools, extra_executor=extra_executor, extra_system=extra_system, salutation=salutation, is_guest=is_guest):
+            for ev in c.engine.stream(user_id, agent, req.message, attachment=attachment, extra_tools=extra_tools, extra_executor=extra_executor, extra_system=extra_system, salutation=salutation, is_guest=is_guest, conversation_id=conv_id):
                 if ev["event"] == "delta":
                     _last_text.append(ev["data"].get("text", ""))
                 yield _sse(ev["event"], ev["data"])
@@ -106,7 +110,7 @@ def chat(
                 preview = "".join(_last_text).strip()[:120]
                 if preview:
                     try:
-                        c.conv_meta.upsert(user_id, agent.name, preview)
+                        c.conv_meta.upsert(user_id, conv_id, agent.name, preview)
                     except Exception:  # noqa: BLE001
                         pass
 

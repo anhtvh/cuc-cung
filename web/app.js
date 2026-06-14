@@ -5,10 +5,18 @@ const $ = (sel) => document.querySelector(sel);
 const state = {
   userId: "guest",    // backward compat — sync từ /auth/me
   user: null,         // { role, email, name, picture } | null (guest)
-  stickyAgent: null,
+  stickyAgent: null,  // agent đang route của cuộc hiện tại (gửi làm agent_name)
+  activeConvId: null, // thread key của cuộc hiện tại (uuid); null = chưa có cuộc (welcome)
   attachment: null,
-  convStore: new Map(), // Map<agentKey, {key, agentName, agentMeta, container, lastText, updatedAt}>
+  // Map<conversationId, {key, agentName, agentMeta, container, lastText, updatedAt, title, titleSent}>
+  convStore: new Map(),
 };
+
+// Sinh conversation_id mới (mỗi "cuộc trò chuyện" độc lập, cho phép nhiều cuộc/agent).
+function newConvId() {
+  if (window.crypto?.randomUUID) return crypto.randomUUID();
+  return "c-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+}
 
 /* svgIcon + domainIcon: định nghĩa trong ui-icons.js (load trước app.js) */
 
@@ -80,6 +88,7 @@ async function doLogout() {
   state.user = null;
   state.userId = "guest";
   state.stickyAgent = null;
+  state.activeConvId = null;
   state.convStore.clear();
   renderUserPill();
   refreshTabsForUser();
@@ -252,19 +261,17 @@ $("#home-domain-tabs")?.querySelectorAll(".hdt").forEach((btn) => {
 });
 
 window.startChatWith = function(name, desc) {
+  // Bấm 1 agent → mở CUỘC MỚI với agent đó (thread riêng, cho phép nhiều cuộc/agent).
   saveCurrentConv();
+  const convId = newConvId();
+  state.activeConvId = convId;
   state.stickyAgent = name;
   _lastRoutedAgent = null;
   _seenHandoffAgents = new Set();
   updateChatHeader(name);
   $("#messages").innerHTML = "";
-  // Tạo entry trong convStore nếu chưa có
-  if (!state.convStore.has(name)) {
-    const agentData = _agentsCache.find((a) => a.name === name);
-    state.convStore.set(name, { key: name, agentName: name, agentMeta: agentData ? { domain: agentData.domain } : null, lastText: "", updatedAt: Date.now(), title: null, titleSent: true });
-  } else {
-    state.convStore.get(name).updatedAt = Date.now();
-  }
+  const agentData = _agentsCache.find((a) => a.name === name);
+  state.convStore.set(convId, { key: convId, agentName: name, agentMeta: agentData ? { domain: agentData.domain } : null, lastText: "", updatedAt: Date.now(), title: null, titleSent: true });
   renderSidebar();
   switchTab("chat");
   if (name === "master") {
@@ -272,11 +279,10 @@ window.startChatWith = function(name, desc) {
   } else {
     addHandoff(name, desc);
     // Auto-trigger khi agent có skill — gửi mention @slug để backend kích hoạt auto_start
-    const agentData = _agentsCache.find((a) => a.name === name);
     if (agentData?.skills?.length > 0) {
       setTimeout(() => {
-        // Chỉ trigger nếu user chưa gõ gì (không ghi đè input của user)
-        if (state.stickyAgent === name && !$("#chat-input").value.trim()) {
+        // Chỉ trigger nếu vẫn ở đúng cuộc này và user chưa gõ gì (không ghi đè input).
+        if (state.activeConvId === convId && !$("#chat-input").value.trim()) {
           _triggerAgentAutoStart(name, agentData.slug || name);
         }
       }, 350);
@@ -336,11 +342,7 @@ async function showWelcome() {
   });
   welcome.querySelector(".wp-create").addEventListener("click", () => {
     if (!state.user) { promptLoginForCreate(); return; }
-    state.stickyAgent = "master";
-    updateChatHeader("master");
-    $("#messages").innerHTML = "";
-    addHandoff("master", "");
-    renderSidebar();
+    startChatWith("master", "");  // mở cuộc mới với master (tạo conversation_id riêng)
     $("#chat-input").focus();
   });
   welcome.querySelectorAll(".wcard").forEach((btn) =>
@@ -366,6 +368,7 @@ function setCurrentAgent(name) {
 $("#reset-agent").addEventListener("click", () => {
   saveCurrentConv();
   state.stickyAgent = null;
+  state.activeConvId = null;  // cuộc mới — id sinh khi gửi tin đầu / chọn agent
   updateChatHeader(null);
   clearAttachments();
   hideMentionDropdown();
@@ -377,6 +380,7 @@ $("#reset-agent").addEventListener("click", () => {
 $("#sidebar-new-btn").addEventListener("click", () => {
   saveCurrentConv();
   state.stickyAgent = null;
+  state.activeConvId = null;  // cuộc mới — id sinh khi gửi tin đầu / chọn agent
   updateChatHeader(null);
   clearAttachments();
   hideMentionDropdown();
@@ -525,9 +529,10 @@ async function _triggerAgentAutoStart(agentName, slug) {
   let assistantText = "";
   const triggerMsg = `@${slug}`;
 
-  // Stream isolation (giống handler chat chính): auto-start gắn cứng vào hội thoại agentName.
-  // User tạo/chuyển hội thoại khác giữa lúc chào → KHÔNG render vào view mới (tránh bleed).
-  const _streamKey = agentName;
+  // Stream isolation: auto-start gắn cứng vào conversation_id hiện tại (cuộc vừa mở cho agent).
+  // User chuyển cuộc khác giữa lúc chào → KHÔNG render vào view mới (tránh bleed).
+  const _convId = state.activeConvId;
+  const _streamKey = _convId;
   let _detached = false;
   const _live = () => {
     if (_detached) return false;
@@ -539,7 +544,7 @@ async function _triggerAgentAutoStart(agentName, slug) {
     const resp = await fetch("/chat", {
       method: "POST",
       headers: headers({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ message: triggerMsg, agent_name: agentName, attachment: null }),
+      body: JSON.stringify({ message: triggerMsg, agent_name: agentName, conversation_id: _convId, attachment: null }),
     });
     if (!resp.ok) return;
 
@@ -622,24 +627,26 @@ async function _triggerAgentAutoStart(agentName, slug) {
       addMsg("tool-note", `↩ Đang nhờ Cục cưng tìm người phù hợp hơn…`);
       await new Promise((r) => setTimeout(r, 300));
       await refreshAgentsCache();
+      // Delegate = tiếp tục CÙNG cuộc với master (không tạo cuộc mới theo agent).
       state.stickyAgent = agent_name;
       setCurrentAgent(agent_name);
-      if (!state.convStore.has(agent_name)) {
+      const _curEntry = state.convStore.get(_convId);
+      if (_curEntry) {
+        _curEntry.agentName = agent_name;
         const _ad = _agentsCache.find((a) => a.name === agent_name);
-        state.convStore.set(agent_name, { key: agent_name, agentName: agent_name, agentMeta: _ad ? { domain: _ad.domain } : null, lastText: "", updatedAt: Date.now(), title: null, titleSent: true });
-      } else {
-        state.convStore.get(agent_name).updatedAt = Date.now();
+        if (_ad) _curEntry.agentMeta = { domain: _ad.domain };
+        _curEntry.updatedAt = Date.now();
       }
       renderSidebar();
       const agentData = _agentsCache.find((a) => a.name === agent_name);
       addHandoff(agent_name, agentData?.description || "");
-      // Gửi message escalate sang Master — không cần user gõ lại (đồng bộ handler chính).
+      // Gửi message escalate sang Master — không cần user gõ lại (cùng conversation_id).
       $("#chat-input").value = delegateMsg;
       submitChat();
       return; // handoff tiếp quản; finally vẫn chạy để enable lại nút gửi
     }
     if (assistantText) {
-      const entry = state.convStore.get(agentName);
+      const entry = state.convStore.get(_convId);
       if (entry) { entry.lastText = assistantText.slice(0, 60); entry.updatedAt = Date.now(); }
       renderSidebar();
     }
@@ -660,24 +667,26 @@ function autoTitle(message) {
   return (lastSpace > 20 ? cut.slice(0, lastSpace) : cut) + "…";
 }
 
-/* ─── Conv store (per-agent conversation persistence) ─── */
+/* ─── Conv store (per-conversation persistence, key = conversation_id) ─── */
 function currentConvKey() {
-  return state.stickyAgent || "__auto__";
+  return state.activeConvId;  // null nếu chưa có cuộc nào (welcome)
 }
 
 function saveCurrentConv() {
   const msgs = $("#messages");
   const hasReal = [...msgs.children].some((el) => el.id !== "welcome");
-  if (!hasReal) return;
   const key = currentConvKey();
+  if (!hasReal || !key) return;  // không có cuộc đang mở → bỏ qua
   const container = document.createElement("div");
   while (msgs.firstChild) container.appendChild(msgs.firstChild);
   const existing = state.convStore.get(key) || {};
-  state.convStore.set(key, { ...existing, key, agentName: state.stickyAgent, container, updatedAt: Date.now() });
+  // agentName giữ theo entry (agent đã route), fallback stickyAgent hiện tại.
+  state.convStore.set(key, { ...existing, key, agentName: existing.agentName ?? state.stickyAgent, container, updatedAt: Date.now() });
 }
 
 async function restoreConv(key) {
   const msgs = $("#messages");
+  if (!key) { showWelcome(); return; }
   const entry = state.convStore.get(key);
   if (entry && entry.container && entry.container.children.length) {
     // In-memory (session hiện tại)
@@ -685,41 +694,40 @@ async function restoreConv(key) {
     scrollBottom();
     return;
   }
-  // Fetch lịch sử từ server (sau F5)
-  const agentName = key === "__auto__" ? null : key;
-  if (agentName) {
-    try {
-      const history = await fetch(`/history/${encodeURIComponent(agentName)}`, { headers: headers() })
-        .then((r) => r.ok ? r.json() : []);
-      if (history.length) {
-        addHandoff(agentName, "");
-        for (const msg of history) {
-          if (msg.role === "user") {
-            const div = document.createElement("div");
-            div.className = "msg user";
-            const mc = document.createElement("span");
-            mc.className = "msg-content";
-            mc.textContent = msg.content;
-            div.appendChild(mc);
-            msgs.appendChild(div);
-          } else if (msg.role === "assistant") {
-            const tag = agentName === "master" ? "Cục cưng" : "@" + agentName;
-            const div = addMsg("assistant", "", tag);
-            div.querySelector(".msg-content").innerHTML = renderMarkdown(msg.content);
-          }
+  // Fetch lịch sử từ server theo conversation_id (sau F5 hoặc cuộc chạy nền xong).
+  const agentName = entry?.agentName || null;
+  try {
+    const history = await fetch(`/history/${encodeURIComponent(key)}`, { headers: headers() })
+      .then((r) => r.ok ? r.json() : []);
+    if (history.length) {
+      if (agentName) addHandoff(agentName, "");
+      for (const msg of history) {
+        if (msg.role === "user") {
+          const div = document.createElement("div");
+          div.className = "msg user";
+          const mc = document.createElement("span");
+          mc.className = "msg-content";
+          mc.textContent = msg.content;
+          div.appendChild(mc);
+          msgs.appendChild(div);
+        } else if (msg.role === "assistant") {
+          const tag = agentName === "master" ? "Cục cưng" : (agentName ? "@" + agentName : "");
+          const div = addMsg("assistant", "", tag);
+          div.querySelector(".msg-content").innerHTML = renderMarkdown(msg.content);
         }
-        scrollBottom();
-        return;
       }
-    } catch (_) {}
-  }
+      scrollBottom();
+      return;
+    }
+  } catch (_) {}
   showWelcome();
 }
 
 window.switchToConv = async function(key) {
   if (key === currentConvKey()) return;
   saveCurrentConv();
-  state.stickyAgent = key === "__auto__" ? null : key;
+  state.activeConvId = key;
+  state.stickyAgent = state.convStore.get(key)?.agentName ?? null;  // agent route của cuộc đó
   updateChatHeader(state.stickyAgent);
   $("#messages").innerHTML = "";
   await restoreConv(key);
@@ -731,18 +739,16 @@ window.deleteConv = async function(key) {
   const isActive = key === currentConvKey();
   state.convStore.delete(key);
   if (isActive) {
+    state.activeConvId = null;
     state.stickyAgent = null;
     updateChatHeader(null);
     $("#messages").innerHTML = "";
     showWelcome();
   }
   renderSidebar();
-  const agentName = key === "__auto__" ? null : key;
-  if (agentName) {
-    try {
-      await fetch(`/history/${encodeURIComponent(agentName)}`, { method: "DELETE", headers: headers() });
-    } catch (_) {}
-  }
+  try {
+    await fetch(`/history/${encodeURIComponent(key)}`, { method: "DELETE", headers: headers() });
+  } catch (_) {}
 };
 
 function updateChatHeader(agentName) {
@@ -825,14 +831,12 @@ window.startRename = function(key) {
     if (!cancelled && entry) {
       entry.title = newTitle;
       entry.titleSent = true;
-      const agentName = key === "__auto__" ? null : key;
-      if (agentName) {
-        fetch(`/history/${encodeURIComponent(agentName)}/title`, {
-          method: "PATCH",
-          headers: headers({ "Content-Type": "application/json" }),
-          body: JSON.stringify({ title: newTitle }),
-        }).catch(() => {});
-      }
+      // key = conversation_id → PATCH title theo cuộc.
+      fetch(`/history/${encodeURIComponent(key)}/title`, {
+        method: "PATCH",
+        headers: headers({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ title: newTitle }),
+      }).catch(() => {});
     }
     // Re-render sidebar để title mới hiển thị đồng bộ
     if (!cancelled) renderSidebar();
@@ -1083,10 +1087,11 @@ $("#chat-form").addEventListener("submit", async (e) => {
   hideWelcome();
   builderTracker.reset();
 
-  // Tạo convStore entry khi bắt đầu send (trước khi meta event đổi stickyAgent)
-  const _preSendKey = currentConvKey();
-  if (!state.convStore.has(_preSendKey)) {
-    state.convStore.set(_preSendKey, { key: _preSendKey, agentName: state.stickyAgent, agentMeta: null, lastText: message.slice(0, 60), updatedAt: Date.now(), title: autoTitle(message), titleSent: false });
+  // Cuộc hiện tại chưa có id (gửi từ welcome) → tạo conversation_id mới.
+  if (!state.activeConvId) state.activeConvId = newConvId();
+  const _convId = state.activeConvId;
+  if (!state.convStore.has(_convId)) {
+    state.convStore.set(_convId, { key: _convId, agentName: state.stickyAgent, agentMeta: null, lastText: message.slice(0, 60), updatedAt: Date.now(), title: autoTitle(message), titleSent: false });
     renderSidebar();
   }
 
@@ -1116,10 +1121,9 @@ $("#chat-form").addEventListener("submit", async (e) => {
   let assistantText = "";
   let lastStopReason = null; // SLA: bắt "sla_deadline"/"timeout" để chú thích cho user
 
-  // BUG-FIX: gắn stream vào hội thoại của nó. Nếu user click sang hội thoại khác giữa chừng,
-  // stream KHÔNG được render vào #messages (đang hiển thị hội thoại khác) hay đổi global state.
-  // _streamKey cập nhật theo meta (auto-route). _detached: latch — đã rời 1 lần thì im luôn.
-  let _streamKey = _preSendKey;
+  // Stream gắn cứng vào conversation_id của nó (ID ổn định, không đổi khi re-route).
+  // User chuyển cuộc giữa chừng → ngừng render vào view mới (tránh bleed). _detached: latch.
+  const _streamKey = _convId;
   let _detached = false;
   const _live = () => {
     if (_detached) return false;
@@ -1131,7 +1135,7 @@ $("#chat-form").addEventListener("submit", async (e) => {
     const resp = await fetch("/chat", {
       method: "POST",
       headers: headers({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ message, agent_name: state.stickyAgent, attachment: attachmentPayload }),
+      body: JSON.stringify({ message, agent_name: state.stickyAgent, conversation_id: _convId, attachment: attachmentPayload }),
     });
 
     if (!resp.ok) {
@@ -1159,26 +1163,15 @@ $("#chat-form").addEventListener("submit", async (e) => {
         const data = JSON.parse(dataMatch[1]);
 
         if (ev === "meta") {
-          // Migrate convStore theo route (dùng _streamKey — danh tính hội thoại của stream này).
-          const _prevKey = _streamKey;
-          if (_prevKey !== data.agent_name) {
-            if (state.convStore.has(_prevKey) && !state.convStore.has(data.agent_name)) {
-              const _e = state.convStore.get(_prevKey);
-              state.convStore.delete(_prevKey);
-              _e.key = data.agent_name; _e.agentName = data.agent_name;
-              state.convStore.set(data.agent_name, _e);
-            } else if (!state.convStore.has(data.agent_name)) {
-              state.convStore.set(data.agent_name, { key: data.agent_name, agentName: data.agent_name, agentMeta: null, lastText: "", updatedAt: Date.now(), title: null, titleSent: true });
-            }
-          }
-          _streamKey = data.agent_name;  // stream giờ thuộc hội thoại agent này
-          const _metaEntry = state.convStore.get(data.agent_name);
+          // conversation_id ổn định (không migrate). Chỉ cập nhật agent đã route cho cuộc này.
+          const _metaEntry = state.convStore.get(_convId);
           if (_metaEntry) {
+            _metaEntry.agentName = data.agent_name;  // agent route của cuộc (hiển thị/icon/sidebar)
             _metaEntry.updatedAt = Date.now();
             const _aData = _agentsCache.find((a) => a.name === data.agent_name);
             if (_aData) _metaEntry.agentMeta = { domain: _aData.domain };
           }
-          // Chỉ đổi global state (stickyAgent/header) khi user CÒN đang xem hội thoại này.
+          // Chỉ đổi global state (stickyAgent/header) khi user CÒN đang xem cuộc này.
           if (_live()) {
             state.stickyAgent = data.agent_name;
             setCurrentAgent(data.agent_name);
@@ -1310,14 +1303,13 @@ $("#chat-form").addEventListener("submit", async (e) => {
     }
     // Cập nhật preview text trong sidebar + lưu auto-title lên server (lần đầu)
     if (assistantText) {
-      const _doneKey = currentConvKey();
-      const _doneEntry = state.convStore.get(_doneKey);
+      const _doneEntry = state.convStore.get(_convId);
       if (_doneEntry) {
         _doneEntry.lastText = assistantText.slice(0, 60);
         _doneEntry.updatedAt = Date.now();
-        if (!_doneEntry.titleSent && _doneKey !== "__auto__" && _doneEntry.title) {
+        if (!_doneEntry.titleSent && _doneEntry.title) {
           _doneEntry.titleSent = true;
-          fetch(`/history/${encodeURIComponent(_doneKey)}/title`, {
+          fetch(`/history/${encodeURIComponent(_convId)}/title`, {
             method: "PATCH",
             headers: headers({ "Content-Type": "application/json" }),
             body: JSON.stringify({ title: _doneEntry.title }),
@@ -1339,18 +1331,20 @@ $("#chat-form").addEventListener("submit", async (e) => {
 
       await new Promise((r) => setTimeout(r, isEscalation ? 300 : 500));
       await refreshAgentsCache();
+      // Delegate = TIẾP TỤC cùng cuộc với agent mới (KHÔNG tạo cuộc mới theo agent).
       state.stickyAgent = agent_name;
       setCurrentAgent(agent_name);
-      if (!state.convStore.has(agent_name)) {
+      const _curEntry = state.convStore.get(_convId);
+      if (_curEntry) {
+        _curEntry.agentName = agent_name;
         const _ad = _agentsCache.find((a) => a.name === agent_name);
-        state.convStore.set(agent_name, { key: agent_name, agentName: agent_name, agentMeta: _ad ? { domain: _ad.domain } : null, lastText: "", updatedAt: Date.now(), title: null, titleSent: true });
-      } else {
-        state.convStore.get(agent_name).updatedAt = Date.now();
+        if (_ad) _curEntry.agentMeta = { domain: _ad.domain };
+        _curEntry.updatedAt = Date.now();
       }
       renderSidebar();
       const agentData = _agentsCache.find((a) => a.name === agent_name);
       addHandoff(agent_name, agentData?.description || "");
-      // Gửi message gốc sang agent mới — không cần user gõ lại
+      // Gửi message gốc sang agent mới — không cần user gõ lại (cùng conversation_id)
       $("#chat-input").value = delegateMsg;
       submitChat();
     }
@@ -2188,15 +2182,13 @@ Hãy: (1) kiểm tra trùng lặp trước, (2) nếu có quy trình thì chưng
   btn.disabled = false;
   btn.textContent = "🚀 Tạo ngay";
 
-  // Switch sang chat, route thẳng tới master
+  // Switch sang chat, mở CUỘC MỚI route thẳng tới master.
   saveCurrentConv();
+  const _convId = newConvId();
+  state.activeConvId = _convId;
   state.stickyAgent = "master";
   setCurrentAgent("master");
-  if (!state.convStore.has("master")) {
-    state.convStore.set("master", { key: "master", agentName: "master", agentMeta: null, lastText: "", updatedAt: Date.now(), title: null, titleSent: true });
-  } else {
-    state.convStore.get("master").updatedAt = Date.now();
-  }
+  state.convStore.set(_convId, { key: _convId, agentName: "master", agentMeta: null, lastText: "", updatedAt: Date.now(), title: null, titleSent: true });
   renderSidebar();
   $("#messages").innerHTML = "";
   switchTab("chat");
@@ -2293,20 +2285,22 @@ async function restoreHistoryFromServer() {
   try {
     const data = await fetch("/history", { headers: headers() }).then((r) => r.ok ? r.json() : []);
     if (!data.length) return;
-    // Populate convStore từ server nếu chưa có (không ghi đè session hiện tại)
+    // Populate convStore từ server nếu chưa có (không ghi đè session hiện tại).
+    // Key = conversation_id; agentName = agent hiện tại của cuộc (để hiển thị/icon).
     for (const entry of data) {
-      const key = entry.agent_name;
+      const key = entry.conversation_id || entry.agent_name;  // fallback row cũ
+      const agentName = entry.agent_name || null;
       if (!state.convStore.has(key)) {
-        const agentData = _agentsCache.find((a) => a.name === key);
+        const agentData = _agentsCache.find((a) => a.name === agentName);
         state.convStore.set(key, {
           key,
-          agentName: key,
+          agentName,
           agentMeta: agentData ? { domain: agentData.domain } : null,
           lastText: entry.last_text || "…",
           updatedAt: entry.updated_at ? new Date(entry.updated_at).getTime() : Date.now(),
           title: entry.title || null,
           titleSent: true,  // đã lưu trên server rồi
-          container: null,  // không có DOM — click sẽ bắt đầu chat mới với history từ server
+          container: null,  // không có DOM — click sẽ fetch /history/{conversation_id}
         });
       }
     }

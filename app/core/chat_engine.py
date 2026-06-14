@@ -369,9 +369,13 @@ class ChatEngine:
         extra_system: str | None = None,
         salutation: str | None = None,
         is_guest: bool = False,
+        conversation_id: str | None = None,
     ) -> Iterator[dict[str, Any]]:
         """extra_tools/extra_executor: bộ tool quản trị của master (builder plugin #1).
-        extra_system: chỉ thị bổ sung theo request (vd note guest không được build)."""
+        extra_system: chỉ thị bổ sung theo request (vd note guest không được build).
+        conversation_id: thread key (memory đọc/ghi theo cuộc). None → fallback agent.name (tương thích ngược)."""
+        # Thread = conversation_id; chưa truyền (client cũ/guest) → dùng agent.name như trước.
+        conv_id = conversation_id or agent.name
         # Auto-trigger: user chỉ tag agent (vd "@be-banh") không nói thêm gì
         # → inject trigger nêu rõ tên skill + pass auto_start để override persona ở cuối system prompt.
         # KHÔNG trigger khi có attachment — user có thể gửi "@agent + file" để xử lý file cụ thể.
@@ -393,7 +397,7 @@ class ChatEngine:
 
         system = self.build_system_prompt(agent, user_id, message=message, auto_start=auto_start, extra_system=extra_system, salutation=salutation, is_guest=is_guest)
         # auto_start: bỏ qua history — tránh model follow pattern cũ "agent hỏi ngược" từ các lần test trước.
-        history = [] if auto_start else self._memory.get_history(user_id, agent.name, limit=self._history_limit)
+        history = [] if auto_start else self._memory.get_history(user_id, conv_id, limit=self._history_limit)
 
         if attachment and attachment.get("content_type") == "image":
             user_msg: Any = {
@@ -534,6 +538,6 @@ class ChatEngine:
             # Lưu marker sạch thay vì câu lệnh đó — vẫn giữ cặp user/assistant để
             # lượt sau không vỡ alternation, nhưng không làm bẩn ngữ cảnh hội thoại.
             stored_user = "[Tự động bắt đầu]" if auto_start else stored_msg
-            self._memory.append(user_id, agent.name, "user", stored_user)
+            self._memory.append(user_id, conv_id, agent.name, "user", stored_user)
             if full_text:
-                self._memory.append(user_id, agent.name, "assistant", full_text)
+                self._memory.append(user_id, conv_id, agent.name, "assistant", full_text)

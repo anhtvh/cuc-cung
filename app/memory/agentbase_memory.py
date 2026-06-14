@@ -106,10 +106,10 @@ class AgentBaseMemory:
     # --- Isolation helpers ---
 
     @staticmethod
-    def _session_id(user_id: str, agent_name: str) -> str:
-        # Dấu __ không xuất hiện trong naming convention agent (design §3.2).
-        # Session khác nhau giữa (user_A, agent_X) và (user_B, agent_X).
-        return f"{user_id}__{agent_name}"
+    def _session_id(user_id: str, conversation_id: str) -> str:
+        # session = thread (conversation_id). Khác nhau giữa các cuộc của cùng user.
+        # conversation_id là uuid → an toàn ký tự.
+        return f"{user_id}__{conversation_id}"
 
     def _events_url(self, user_id: str, session_id: str) -> str:
         # actor_id = user_id — không bao giờ dùng giá trị mặc định hay global.
@@ -121,8 +121,8 @@ class AgentBaseMemory:
 
     # --- Memory interface ---
 
-    def get_history(self, user_id: str, agent_name: str, limit: int = 20) -> list[ChatMessage]:
-        session_id = self._session_id(user_id, agent_name)
+    def get_history(self, user_id: str, conversation_id: str, limit: int = 20) -> list[ChatMessage]:
+        session_id = self._session_id(user_id, conversation_id)
         url = self._events_url(user_id, session_id)
         try:
             resp = self._http.get(url, headers=self._headers(), params={"page": 1, "size": limit})
@@ -138,17 +138,18 @@ class AgentBaseMemory:
                     result.append(ChatMessage(role=role, content=str(content)))
             return result
         except Exception:
-            log.exception("AgentBaseMemory.get_history lỗi (user=%s, agent=%s)", user_id, agent_name)
+            log.exception("AgentBaseMemory.get_history lỗi (user=%s, conv=%s)", user_id, conversation_id)
             return []
 
-    def append(self, user_id: str, agent_name: str, role: str, content: str) -> None:
-        session_id = self._session_id(user_id, agent_name)
+    def append(self, user_id: str, conversation_id: str, agent_name: str, role: str, content: str) -> None:
+        session_id = self._session_id(user_id, conversation_id)
         url = self._events_url(user_id, session_id)
         body = {
             "payload": {
                 "type": "conversational",
                 "role": role,
                 "message": content,
+                "agentName": agent_name,  # agent trả lời (metadata, để truy vết)
             }
         }
         # I-08: retry 1 lần với backoff ngắn tránh mất message do HTTP transient error
@@ -159,10 +160,10 @@ class AgentBaseMemory:
                 return
             except Exception:
                 if attempt == 0:
-                    log.warning("AgentBaseMemory.append thất bại lần 1, thử lại (user=%s, agent=%s)", user_id, agent_name)
+                    log.warning("AgentBaseMemory.append thất bại lần 1, thử lại (user=%s, conv=%s)", user_id, conversation_id)
                     time.sleep(0.5)
                 else:
-                    log.exception("AgentBaseMemory.append lỗi sau 2 lần (user=%s, agent=%s)", user_id, agent_name)
+                    log.exception("AgentBaseMemory.append lỗi sau 2 lần (user=%s, conv=%s)", user_id, conversation_id)
 
     def search(self, user_id: str, query: str, limit: int = 5) -> list[str]:
         if not self._strategy_id:

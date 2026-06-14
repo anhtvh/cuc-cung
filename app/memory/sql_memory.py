@@ -11,11 +11,11 @@ class SqlMemory:
     def __init__(self, engine: Engine):
         self._engine = engine
 
-    def get_history(self, user_id: str, agent_name: str, limit: int = 20) -> list[ChatMessage]:
+    def get_history(self, user_id: str, conversation_id: str, limit: int = 20) -> list[ChatMessage]:
         with Session(self._engine) as s:
             q = (
                 select(MessageRow)
-                .where(MessageRow.user_id == user_id, MessageRow.agent_name == agent_name)
+                .where(MessageRow.user_id == user_id, MessageRow.conversation_id == conversation_id)
                 .order_by(MessageRow.id.desc())
                 .limit(limit)
             )
@@ -23,21 +23,22 @@ class SqlMemory:
         rows.reverse()  # trả về theo thứ tự thời gian
         return [ChatMessage(role=r.role or "user", content=r.content or "") for r in rows]
 
-    def append(self, user_id: str, agent_name: str, role: str, content: str) -> None:
+    def append(self, user_id: str, conversation_id: str, agent_name: str, role: str, content: str) -> None:
         with Session(self._engine) as s:
             s.add(
                 MessageRow(
-                    user_id=user_id, agent_name=agent_name, role=role, content=content, created_at=now_iso()
+                    user_id=user_id, conversation_id=conversation_id, agent_name=agent_name,
+                    role=role, content=content, created_at=now_iso()
                 )
             )
             s.commit()
 
-    def delete_conversation(self, user_id: str, agent_name: str) -> None:
+    def delete_conversation(self, user_id: str, conversation_id: str) -> None:
         with Session(self._engine) as s:
             s.execute(
                 delete(MessageRow).where(
                     MessageRow.user_id == user_id,
-                    MessageRow.agent_name == agent_name,
+                    MessageRow.conversation_id == conversation_id,
                 )
             )
             s.commit()

@@ -72,7 +72,8 @@ class MessageRow(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str | None] = mapped_column(Text)
-    agent_name: Mapped[str | None] = mapped_column(Text)
+    conversation_id: Mapped[str | None] = mapped_column(Text)  # thread key (tách khỏi agent)
+    agent_name: Mapped[str | None] = mapped_column(Text)       # agent đã trả lời tin nhắn này
     role: Mapped[str | None] = mapped_column(Text)
     content: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[str | None] = mapped_column(Text)
@@ -119,7 +120,8 @@ class ConvMetaRow(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(Text, nullable=False)
-    agent_name: Mapped[str] = mapped_column(Text, nullable=False)
+    conversation_id: Mapped[str | None] = mapped_column(Text)  # thread key (PK logic: user_id + conversation_id)
+    agent_name: Mapped[str] = mapped_column(Text, nullable=False)  # agent hiện tại của cuộc (hiển thị/icon)
     last_text: Mapped[str | None] = mapped_column(Text)
     title: Mapped[str | None] = mapped_column(Text)     # tên do user đặt hoặc auto từ tin nhắn đầu
     updated_at: Mapped[str | None] = mapped_column(Text)
@@ -450,32 +452,36 @@ class SqlConvMetaRepo:
     def __init__(self, engine: Engine):
         self._engine = engine
 
-    def upsert(self, user_id: str, agent_name: str, last_text: str) -> None:
+    def upsert(self, user_id: str, conversation_id: str, agent_name: str, last_text: str) -> None:
         with Session(self._engine) as s:
             existing = s.execute(
                 select(ConvMetaRow)
-                .where(ConvMetaRow.user_id == user_id, ConvMetaRow.agent_name == agent_name)
+                .where(ConvMetaRow.user_id == user_id, ConvMetaRow.conversation_id == conversation_id)
             ).scalar_one_or_none()
             if existing:
+                existing.agent_name = agent_name  # cuộc có thể đổi agent (re-route) → cập nhật
                 existing.last_text = last_text[:120]
                 existing.updated_at = now_iso()
             else:
-                s.add(ConvMetaRow(user_id=user_id, agent_name=agent_name, last_text=last_text[:120], updated_at=now_iso()))
+                s.add(ConvMetaRow(user_id=user_id, conversation_id=conversation_id, agent_name=agent_name,
+                                  last_text=last_text[:120], updated_at=now_iso()))
             s.commit()
 
-    def rename(self, user_id: str, agent_name: str, title: str) -> None:
+    def rename(self, user_id: str, conversation_id: str, title: str) -> None:
         """Đặt (hoặc ghi đè) tên hiển thị cho một conversation."""
         with Session(self._engine) as s:
             existing = s.execute(
                 select(ConvMetaRow)
-                .where(ConvMetaRow.user_id == user_id, ConvMetaRow.agent_name == agent_name)
+                .where(ConvMetaRow.user_id == user_id, ConvMetaRow.conversation_id == conversation_id)
             ).scalar_one_or_none()
             if existing:
                 existing.title = title[:100]
                 existing.updated_at = now_iso()
             else:
-                # Row chưa tồn tại (race condition) — tạo luôn để title không bị mất
-                s.add(ConvMetaRow(user_id=user_id, agent_name=agent_name, title=title[:100], updated_at=now_iso()))
+                # Row chưa tồn tại (race condition) — tạo luôn để title không bị mất.
+                # agent_name chưa biết → dùng conversation_id tạm (upsert lượt chat sẽ ghi đúng).
+                s.add(ConvMetaRow(user_id=user_id, conversation_id=conversation_id, agent_name=conversation_id,
+                                  title=title[:100], updated_at=now_iso()))
             s.commit()
 
     def list(self, user_id: str, limit: int = 20) -> list[dict]:
@@ -489,6 +495,7 @@ class SqlConvMetaRepo:
             rows = list(s.scalars(q))
         return [
             {
+                "conversation_id": r.conversation_id or r.agent_name,  # fallback row cũ chưa backfill
                 "agent_name": r.agent_name,
                 "last_text": r.last_text or "",
                 "title": r.title or "",
@@ -497,11 +504,11 @@ class SqlConvMetaRepo:
             for r in rows
         ]
 
-    def delete(self, user_id: str, agent_name: str) -> None:
+    def delete(self, user_id: str, conversation_id: str) -> None:
         with Session(self._engine) as s:
             s.execute(
                 delete(ConvMetaRow)
-                .where(ConvMetaRow.user_id == user_id, ConvMetaRow.agent_name == agent_name)
+                .where(ConvMetaRow.user_id == user_id, ConvMetaRow.conversation_id == conversation_id)
             )
             s.commit()
 

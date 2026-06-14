@@ -13,16 +13,16 @@ def get_recent_conversations(
     c: Container = Depends(get_container),
     user_id: str = Depends(get_user_id),
 ):
-    """Trả [{agent_name, last_text, updated_at}] để UI restore sidebar.
+    """Trả [{conversation_id, agent_name, title, last_text, updated_at}] để UI restore sidebar.
 
     Dùng conv_meta (SQLite) — hoạt động với mọi memory backend kể cả AgentBase.
     """
     return c.conv_meta.list(user_id)
 
 
-@router.get("/{agent_name}")
+@router.get("/{conversation_id}")
 def get_conversation_messages(
-    agent_name: str,
+    conversation_id: str,
     c: Container = Depends(get_container),
     user_id: str = Depends(get_user_id),
 ):
@@ -30,7 +30,7 @@ def get_conversation_messages(
 
     Gọi trực tiếp memory.get_history() — hoạt động với mọi backend (SqlMemory, AgentBaseMemory).
     """
-    msgs = c.memory.get_history(user_id, agent_name, limit=50)
+    msgs = c.memory.get_history(user_id, conversation_id, limit=50)
     return [{"role": m.role, "content": m.content} for m in msgs]
 
 
@@ -38,9 +38,9 @@ class ConvTitleRequest(BaseModel):
     title: str
 
 
-@router.patch("/{agent_name}/title")
+@router.patch("/{conversation_id}/title")
 def update_conversation_title(
-    agent_name: str,
+    conversation_id: str,
     body: ConvTitleRequest,
     c: Container = Depends(get_container),
     user_id: str = Depends(get_user_id),
@@ -49,23 +49,23 @@ def update_conversation_title(
     title = body.title.strip()
     if not title:
         return {"ok": False, "reason": "title trống"}
-    c.conv_meta.rename(user_id, agent_name, title)
-    return {"ok": True, "agent_name": agent_name, "title": title}
+    c.conv_meta.rename(user_id, conversation_id, title)
+    return {"ok": True, "conversation_id": conversation_id, "title": title}
 
 
-@router.delete("/{agent_name}")
+@router.delete("/{conversation_id}")
 def delete_conversation(
-    agent_name: str,
+    conversation_id: str,
     c: Container = Depends(get_container),
     user_id: str = Depends(get_user_id),
 ):
-    """Xóa toàn bộ lịch sử chat của user với agent đó.
+    """Xóa toàn bộ lịch sử chat của một cuộc trò chuyện.
 
     SqlMemory: xóa cả bảng messages. AgentBase: không hỗ trợ delete session — bỏ qua.
     conv_meta luôn xóa bất kể backend.
     """
     from app.memory.sql_memory import SqlMemory
     if isinstance(c.memory, SqlMemory):
-        c.memory.delete_conversation(user_id, agent_name)
-    c.conv_meta.delete(user_id, agent_name)
-    return {"deleted": agent_name}
+        c.memory.delete_conversation(user_id, conversation_id)
+    c.conv_meta.delete(user_id, conversation_id)
+    return {"deleted": conversation_id}
