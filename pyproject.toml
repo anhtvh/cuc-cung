@@ -27,8 +27,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+# UI e2e (Playwright) — chạy riêng `pytest e2e/`, cần `playwright install chromium`.
+e2e = ["pytest>=8.0", "pytest-playwright>=0.5", "playwright>=1.50"]
 
 [tool.pytest.ini_options]
+# Chỉ unit/integration nhanh — bộ UI e2e ở e2e/ chạy tách (xem e2e/README.md).
 testpaths = ["tests"]
 
 [build-system]
