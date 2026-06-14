@@ -19,19 +19,33 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # messages: mỗi tin nhắn gắn conversation_id (thread). agent_name giữ lại = agent đã trả lời.
-    op.add_column("messages", sa.Column("conversation_id", sa.Text))
+    # IDEMPOTENT: SQLite alembic chạy non-transactional DDL → migration có thể nửa-áp-dụng rồi
+    # crash (vd drop_index 1 index không tồn tại) khiến lần chạy sau lỗi "duplicate column".
+    # Mỗi bước dưới đây đều kiểm tra trạng thái trước → re-run an toàn trên DB nửa-áp-dụng.
+    bind = op.get_bind()
+    insp = sa.inspect(bind)
+
+    def _cols(table):
+        return {c["name"] for c in insp.get_columns(table)}
+
+    def _indexes(table):
+        return {i["name"] for i in insp.get_indexes(table)}
+
+    # messages: cột conversation_id (thread) — agent_name giữ lại = agent đã trả lời.
+    if "conversation_id" not in _cols("messages"):
+        op.add_column("messages", sa.Column("conversation_id", sa.Text))
     op.execute("UPDATE messages SET conversation_id = agent_name WHERE conversation_id IS NULL")
 
     # conv_meta: metadata theo conversation_id; agent_name = agent hiện tại của cuộc.
-    op.add_column("conv_meta", sa.Column("conversation_id", sa.Text))
+    if "conversation_id" not in _cols("conv_meta"):
+        op.add_column("conv_meta", sa.Column("conversation_id", sa.Text))
     op.execute("UPDATE conv_meta SET conversation_id = agent_name WHERE conversation_id IS NULL")
 
-    # Unique key cũ (user_id, agent_name) chặn nhiều cuộc/agent → thay bằng (user_id, conversation_id).
-    op.drop_index("ix_conv_meta_user_agent", table_name="conv_meta")
-    op.create_index("ix_conv_meta_user_conv", "conv_meta", ["user_id", "conversation_id"], unique=True)
-    # Index tra cứu messages theo thread.
-    op.create_index("ix_messages_user_conv", "messages", ["user_id", "conversation_id"])
+    # Thay unique key cũ (user_id, agent_name) → (user_id, conversation_id). IF EXISTS/NOT EXISTS
+    # để an toàn dù index nguồn tạo bằng migration hay create_all.
+    op.execute("DROP INDEX IF EXISTS ix_conv_meta_user_agent")
+    op.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_conv_meta_user_conv ON conv_meta (user_id, conversation_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_messages_user_conv ON messages (user_id, conversation_id)")
 
 
 def downgrade() -> None:
