@@ -95,15 +95,20 @@ def chat(
                     _last_text.append(ev["data"].get("text", ""))
                 yield _sse(ev["event"], ev["data"])
         except Exception as e:  # noqa: BLE001 — lỗi giữa stream phải báo UI, không chết im lặng
-            log.exception("chat stream lỗi (user=%s, agent=%s)", user_id, agent.name)
-            yield _sse("error", {"message": str(e)})
+            # Log chi tiết để debug, nhưng KHÔNG lộ message thô của provider (vd "Error code: 404 ...")
+            # ra UI — gửi câu thân thiện thay thế.
+            log.exception("chat stream lỗi (user=%s, agent=%s): %s", user_id, agent.name, e)
+            yield _sse("error", {"message": "Hệ thống đang bận hoặc gặp sự cố tạm thời, anh/chị thử lại sau giây lát nhé 🙏"})
         finally:
-            # Guest không lưu conv_meta (history không persist qua refresh)
+            # Guest không lưu conv_meta (history không persist qua refresh).
+            # .strip() để preview ở sidebar không dính khoảng trắng/newline đầu → trông trống.
             if _last_text and not is_guest:
-                try:
-                    c.conv_meta.upsert(user_id, agent.name, "".join(_last_text)[:120])
-                except Exception:  # noqa: BLE001
-                    pass
+                preview = "".join(_last_text).strip()[:120]
+                if preview:
+                    try:
+                        c.conv_meta.upsert(user_id, agent.name, preview)
+                    except Exception:  # noqa: BLE001
+                        pass
 
     return StreamingResponse(
         event_stream(),
