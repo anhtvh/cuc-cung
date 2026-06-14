@@ -127,6 +127,20 @@ class ConvMetaRow(Base):
     updated_at: Mapped[str | None] = mapped_column(Text)
 
 
+class AgentDocRow(Base):
+    """Registry tài liệu RAG đã upload cho 1 agent (chunk thật nằm ở knowledge store)."""
+
+    __tablename__ = "agent_docs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    agent_name: Mapped[str] = mapped_column(Text, nullable=False)
+    filename: Mapped[str] = mapped_column(Text, nullable=False)
+    chunk_count: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str | None] = mapped_column(Text)   # ready | error
+    created_by: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str | None] = mapped_column(Text)
+
+
 # --- row <-> domain model ---
 
 
@@ -510,6 +524,54 @@ class SqlConvMetaRepo:
                 delete(ConvMetaRow)
                 .where(ConvMetaRow.user_id == user_id, ConvMetaRow.conversation_id == conversation_id)
             )
+            s.commit()
+
+
+class SqlAgentDocsRepo:
+    """Registry tài liệu RAG per-agent (chunk thật ở knowledge store)."""
+
+    def __init__(self, engine: Engine):
+        self._engine = engine
+
+    def add(self, agent_name: str, filename: str, chunk_count: int, created_by: str, status: str = "ready") -> int:
+        with Session(self._engine) as s:
+            row = AgentDocRow(agent_name=agent_name, filename=filename, chunk_count=chunk_count,
+                              status=status, created_by=created_by, created_at=now_iso())
+            s.add(row)
+            s.commit()
+            return row.id
+
+    def list(self, agent_name: str) -> list[dict]:
+        with Session(self._engine) as s:
+            q = (
+                select(AgentDocRow)
+                .where(AgentDocRow.agent_name == agent_name)
+                .order_by(AgentDocRow.id.desc())
+            )
+            rows = list(s.scalars(q))
+        return [
+            {"id": r.id, "filename": r.filename, "chunk_count": r.chunk_count or 0,
+             "status": r.status or "ready", "created_by": r.created_by, "created_at": r.created_at or ""}
+            for r in rows
+        ]
+
+    def get(self, doc_id: int) -> dict | None:
+        with Session(self._engine) as s:
+            r = s.get(AgentDocRow, doc_id)
+            if not r:
+                return None
+            return {"id": r.id, "agent_name": r.agent_name, "filename": r.filename,
+                    "chunk_count": r.chunk_count or 0, "created_by": r.created_by}
+
+    def count(self, agent_name: str) -> int:
+        with Session(self._engine) as s:
+            return s.execute(
+                select(func.count()).select_from(AgentDocRow).where(AgentDocRow.agent_name == agent_name)
+            ).scalar() or 0
+
+    def delete(self, doc_id: int) -> None:
+        with Session(self._engine) as s:
+            s.execute(delete(AgentDocRow).where(AgentDocRow.id == doc_id))
             s.commit()
 
 

@@ -92,6 +92,19 @@ class Settings(BaseSettings):
     agentbase_memory_store_id: str = ""
     agentbase_memory_strategy_id: str = ""
 
+    # --- RAG / Knowledge (MODULE bật/tắt bằng RAG_ENABLED) ---
+    # Off (mặc định) → không có tool knowledge_search, không upload doc, flow chạy y như cũ.
+    # On → cần knowledge_store_id + knowledge_strategy_id (store SEMANTIC riêng, tách store hội thoại)
+    #      + greennode_client_id/secret (IAM). Thiếu bất kỳ → coi như tắt (an toàn, xem rag_active).
+    rag_enabled: bool = False
+    knowledge_store_id: str = ""
+    knowledge_strategy_id: str = ""
+    rag_top_k: int = 5                  # số đoạn lấy về (API search min 5)
+    rag_score_threshold: float = 0.6    # lọc đoạn lạc đề (spike: 0.68 tách sạch nhiễu)
+    knowledge_max_doc_mb: int = 5       # giới hạn 1 tài liệu upload
+    knowledge_chunk_chars: int = 1200   # ~ kích thước 1 chunk
+    knowledge_chunk_overlap: int = 150
+
     # --- Auth ---
     # Tắt guest mode: chỉ user đã login mới vào được (mọi route trả 401 cho guest).
     guest_mode: bool = True
@@ -137,6 +150,18 @@ class Settings(BaseSettings):
         ids = {u.strip() for u in self.admin_user_ids.split(",") if u.strip()}
         ids |= {e.strip() for e in self.admin_email.split(",") if e.strip()}
         return ids
+
+    @property
+    def rag_active(self) -> bool:
+        """RAG thực sự hoạt động khi: bật cờ + đủ store/strategy + có IAM creds.
+        Thiếu bất kỳ → tắt an toàn (flow chạy như cũ, không lỗi)."""
+        return bool(
+            self.rag_enabled
+            and self.knowledge_store_id
+            and self.knowledge_strategy_id
+            and self.greennode_client_id
+            and self.greennode_client_secret
+        )
 
 
 def load_settings() -> Settings:

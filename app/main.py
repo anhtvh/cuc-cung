@@ -148,6 +148,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     user_repo = SqlUserRepo(engine)
     memory = make_memory(settings, engine)
 
+    # RAG module (bật/tắt bằng config). Tắt → knowledge=None, flow chạy như cũ.
+    from app.knowledge.service import make_knowledge_service
+    from app.storage.sql import SqlAgentDocsRepo
+    agent_docs = SqlAgentDocsRepo(engine)
+    knowledge = make_knowledge_service(settings, agent_docs)
+
     init_limiter(settings.rate_limit_per_minute)
     llm = make_llm(settings)
     router_llm = make_router_llm(settings)
@@ -231,6 +237,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         engine=chat_engine,
         web_search_provider=web_search_provider,
         tester=tester,
+        knowledge=knowledge,
     )
     app.add_middleware(UserIdMiddleware, jwt_secret=settings.jwt_secret, guest_mode=settings.guest_mode)
 

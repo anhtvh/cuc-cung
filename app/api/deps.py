@@ -33,6 +33,7 @@ class Container:
     engine: ChatEngine
     web_search_provider: ToolProvider | None = None
     tester: object | None = None  # AgentTester (HM3 self-test)
+    knowledge: object | None = None  # KnowledgeService (RAG module) — None khi RAG tắt
 
 
 def get_container(request: Request) -> Container:
