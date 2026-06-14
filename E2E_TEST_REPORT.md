@@ -163,10 +163,10 @@ Mục tiêu: "trải nghiệm đúng & tốt", không chỉ "có chạy". Seed t
 | **I. Web-search** | câu real-time in-domain → search→fetch DuckDuckGo thật, trả kết quả có nguồn | ✓ |
 | **K. Resilience** | rate-limit→429 thân thiện; lỗi giữa stream→meta gửi trước rồi error event (không crash/blank); empty state hợp lý | ✓ |
 
-## 🟡 Quan sát UX (không phải bug chặn — đề xuất cải thiện)
-1. **Lỗi giữa stream lộ message thô của provider** (vd `Error code: 404 - {...model not found}`) ra UI. Nên sanitize thành câu thân thiện ("Hệ thống đang bận, thử lại nhé"). *(Dễ fix)*
-2. **`last_text` preview ở sidebar dính `\n\n` đầu** → preview trông trống. Nên `.strip()` khi lưu conv_meta. *(Trivial)*
-3. **Dedup không proactive khi tạo trùng**: user mô tả ý trùng Bé Bếp → master vào phỏng vấn luôn, không cảnh báo "đã có agent tương tự" (đôi khi bỏ qua `list_agents`). Hard-block tên/slug trùng + dedup ở review vẫn chặn, nhưng user có thể mất công. Nên siết `master_system.md`: luôn `list_agents` + nêu agent trùng trước khi build. *(Behavioral/prompt)*
-4. **Bất đối xứng validate**: sửa 1 field (visibility/desc) re-validate TOÀN payload (gồm persona ≥200) → có thể chặn thao tác nhỏ; trong khi `submit`/`approve` KHÔNG re-validate. Chỉ lộ khi persona <200 (tạo chuẩn không xảy ra). Cân nhắc thống nhất. *(Edge, minor)*
+## 🟡 Quan sát UX (đề xuất cải thiện) — TẤT CẢ ĐÃ FIX
+1. **Lỗi giữa stream lộ message thô provider** — ✅ FIX: `chat.py` gửi câu thân thiện ra UI, log giữ chi tiết.
+2. **`last_text` preview dính `\n\n` đầu** — ✅ FIX: `.strip()` + bỏ qua preview rỗng trong `chat.py`.
+3. **Dedup không proactive khi tạo trùng** — ✅ FIX: `master_system.md` đưa kiểm tra trùng thành **bước 1** (gọi `list_agents`/`list_skills` NGAY, nêu agent trùng trước khi phỏng vấn). Verify live: request trùng Bé Pháp → master cảnh báo "đã có @Bé Pháp, dùng luôn hay tạo mới" trước khi phỏng vấn.
+4. **Bất đối xứng validate** — ✅ FIX: `submit_for_review` re-validate payload (đối xứng `propose_update`, fail-safe không để item invalid lên public). Regression test trong `test_governance.py`.
 
-**Kết luận đợt 3:** trải nghiệm user các tính năng cốt lõi **đúng và mượt**; không phát sinh bug chặn mới. 4 điểm trên là cải thiện UX tăng độ hoàn thiện.
+**Kết luận đợt 3:** trải nghiệm user các tính năng cốt lõi **đúng và mượt**; không phát sinh bug chặn. 4 điểm UX nêu trên đều đã xử lý. Tổng **121/121 unit test pass**.
