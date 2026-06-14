@@ -10,7 +10,19 @@ const state = {
   attachment: null,
   // Map<conversationId, {key, agentName, agentMeta, container, lastText, updatedAt, title, titleSent}>
   convStore: new Map(),
+  streaming: new Set(),     // conversation_id đang có stream chạy (chưa kết thúc)
+  pendingDelete: new Set(), // conversation_id user đã xoá khi đang stream → DELETE sau khi stream xong
 };
+
+// Gọi khi stream của 1 cuộc kết thúc: nếu user đã xoá cuộc đó giữa chừng thì DELETE server NGAY
+// BÂY GIỜ (server đã ghi xong memory/conv_meta trong finally) → cuộc không tái xuất (fix #3).
+function finishStream(convId) {
+  state.streaming.delete(convId);
+  if (state.pendingDelete.has(convId)) {
+    state.pendingDelete.delete(convId);
+    fetch(`/history/${encodeURIComponent(convId)}`, { method: "DELETE", headers: headers() }).catch(() => {});
+  }
+}
 
 // Sinh conversation_id mới (mỗi "cuộc trò chuyện" độc lập, cho phép nhiều cuộc/agent).
 function newConvId() {
@@ -532,6 +544,7 @@ async function _triggerAgentAutoStart(agentName, slug) {
   // Stream isolation: auto-start gắn cứng vào conversation_id hiện tại (cuộc vừa mở cho agent).
   // User chuyển cuộc khác giữa lúc chào → KHÔNG render vào view mới (tránh bleed).
   const _convId = state.activeConvId;
+  state.streaming.add(_convId);  // theo dõi để xử lý xoá-giữa-chừng (#3)
   const _streamKey = _convId;
   let _detached = false;
   const _live = () => {
@@ -653,6 +666,7 @@ async function _triggerAgentAutoStart(agentName, slug) {
   } catch (_) {
     hideTyping();
   } finally {
+    finishStream(_convId);  // #3: xoá-giữa-chừng → DELETE sau khi server ghi xong
     $("#send-btn").disabled = false;
     $("#chat-input").focus();
   }
@@ -746,6 +760,12 @@ window.deleteConv = async function(key) {
     showWelcome();
   }
   renderSidebar();
+  // #3: nếu cuộc đang có stream chạy → hoãn DELETE tới khi stream xong (server ghi xong),
+  // tránh memory.append trong finally của backend ghi lại sau khi đã xoá (cuộc tái xuất).
+  if (state.streaming.has(key)) {
+    state.pendingDelete.add(key);
+    return;
+  }
   try {
     await fetch(`/history/${encodeURIComponent(key)}`, { method: "DELETE", headers: headers() });
   } catch (_) {}
@@ -1090,6 +1110,7 @@ $("#chat-form").addEventListener("submit", async (e) => {
   // Cuộc hiện tại chưa có id (gửi từ welcome) → tạo conversation_id mới.
   if (!state.activeConvId) state.activeConvId = newConvId();
   const _convId = state.activeConvId;
+  state.streaming.add(_convId);  // theo dõi để xử lý xoá-giữa-chừng (#3)
   if (!state.convStore.has(_convId)) {
     state.convStore.set(_convId, { key: _convId, agentName: state.stickyAgent, agentMeta: null, lastText: message.slice(0, 60), updatedAt: Date.now(), title: autoTitle(message), titleSent: false });
     renderSidebar();
@@ -1352,6 +1373,7 @@ $("#chat-form").addEventListener("submit", async (e) => {
     hideTyping();
     addMsg("error", `Ủa, mất kết nối rồi 😅 Thử lại nhé! (${err.message})`);
   } finally {
+    finishStream(_convId);  // #3: nếu user đã xoá cuộc này giữa chừng → DELETE sau khi server ghi xong
     $("#send-btn").disabled = false;
     input.focus();
   }
