@@ -1227,6 +1227,10 @@ $("#chat-form").addEventListener("submit", async (e) => {
 
         } else if (ev === "done") {
           lastStopReason = data.stop_reason || null;
+          // Lượt đã xong → ẩn typing NGAY, không đợi kết nối đóng. Backend còn ghi memory
+          // (agentbase = HTTP ~vài giây) sau khi gửi done → stream chưa đóng → nếu chờ
+          // post-loop mới hideTyping thì typing quay tiếp dù đáp án đã hiện (bug đã gặp).
+          if (_live()) { hideTyping(); builderTracker.finish(); finalizeTurnProcess(assistantDiv); }
 
         } else if (ev === "error") {
           if (_live()) { hideTyping(); addMsg("error", data.message); }
