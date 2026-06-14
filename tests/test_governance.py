@@ -59,6 +59,16 @@ def test_submit_promotes_private_agent_to_company(governance, agents, skills):
     assert governance.can_use_agent(approved, "nguoi-khac") is True  # cả công ty thấy
 
 
+def test_submit_validates_payload(governance, agents, skills):
+    """Fix #4: submit re-validate payload — persona <200 không lọt lên hàng chờ duyệt (fail-safe)."""
+    a = make_agent()
+    a.system_prompt = "ngắn quá, chưa đủ 200 ký tự"  # invalid (tạo trực tiếp qua repo, bypass create)
+    agents.create(a)
+    attach_test_skill(agents, skills)
+    with pytest.raises(GovernanceError, match="quá ngắn"):
+        governance.submit_for_review("agent", "TestAgent", "maker")
+
+
 def test_submit_only_from_private(governance, agents):
     agents.create(make_agent(status=ItemStatus.public))
     with pytest.raises(GovernanceError, match="private"):

@@ -339,6 +339,13 @@ class Governance:
             raise GovernanceError(f"Chỉ người tạo ({item.created_by}) hoặc admin được submit '{name}'.")
         if item.status != ItemStatus.private:
             raise GovernanceError(f"Chỉ submit được từ private (hiện tại: {item.status.value}).")
+        # Fix #4: validate nội dung TRƯỚC khi đưa vào hàng chờ duyệt — đối xứng với propose_update,
+        # fail-safe: không để item invalid (vd persona <200, chứa secret) lọt lên public dù được
+        # tạo qua đường nào. Item hợp lệ (tạo chuẩn) luôn pass nên không cản trở flow bình thường.
+        if kind == "agent":
+            self.validate_agent_payload(item.name, item.description, item.system_prompt, item.connectors)
+        else:
+            self.validate_skill_payload(item.name, item.description, item.content)
         # Ràng buộc: agent con BẮT BUỘC có ≥1 skill — skill mã hoá quy trình/nguyên tắc
         # để mỗi lần gọi agent đều nhất quán (kể cả agent chỉ dùng connector).
         if kind == "agent" and not self._agents.skills_of(name):
