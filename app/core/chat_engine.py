@@ -73,6 +73,35 @@ _REQUEST_UPDATE_TOOL = ToolDef(
     },
 )
 
+# RAG: tool tra cứu tài liệu của agent (chỉ inject khi module bật + agent có tài liệu).
+_KNOWLEDGE_SEARCH_TOOL = ToolDef(
+    name="knowledge_search",
+    description=(
+        "Tra cứu trong TÀI LIỆU NỘI BỘ của bạn (do người quản lý upload: PDF/DOCX quy trình, "
+        "chính sách...). GỌI TRƯỚC khi trả lời mọi câu hỏi liên quan nghiệp vụ/quy trình/chính sách "
+        "của tổ chức — đừng trả lời theo kiến thức chung nếu có thể tra tài liệu. Trả về các đoạn "
+        "liên quan kèm tên nguồn để bạn trích dẫn."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Câu hỏi/từ khoá cần tra trong tài liệu"},
+        },
+        "required": ["query"],
+    },
+)
+
+_KNOWLEDGE_PROMPT_SUFFIX = """
+# Tài liệu nội bộ (RAG)
+
+Bạn có tài liệu nội bộ do người quản lý cung cấp. Khi user hỏi về quy trình, chính sách,
+nghiệp vụ cụ thể của tổ chức:
+1. GỌI `knowledge_search` với câu hỏi → nhận các đoạn liên quan kèm nguồn.
+2. Trả lời DỰA TRÊN đoạn lấy được, **trích nguồn** (vd: *"theo tài liệu X..."*).
+3. Nếu không tìm thấy trong tài liệu → nói rõ "không có trong tài liệu nội bộ", rồi mới
+   cân nhắc trả lời chung. TUYỆT ĐỐI không bịa nội dung tài liệu.
+"""
+
 _REQUEST_UPDATE_PROMPT_SUFFIX = """
 # Cập nhật kiến thức của chính mình (QUAN TRỌNG — không được bỏ qua)
 
@@ -184,6 +213,7 @@ class ChatEngine:
         history_limit: int = 20,
         model: str | None = None,
         builder_sla_seconds: float | None = None,
+        knowledge=None,
     ):
         self._agents = agents
         self._skills = skills
@@ -196,12 +226,14 @@ class ChatEngine:
         self._model = model
         # SLA riêng cho master builder (Flow 2): dài hơn để kịp gọi create_* (xem chat_with_tools).
         self._builder_sla_seconds = builder_sla_seconds
+        # KnowledgeService (RAG) — None khi module tắt. Agent có tài liệu → inject tool knowledge_search.
+        self._knowledge = knowledge
 
     # L-04: giới hạn tổng system prompt ~30k chars ≈ 8k token để không bị model truncate
     _MAX_SYSTEM_CHARS = 30_000
     _MAX_SKILL_CHARS = 8_000  # mỗi skill tối đa 8k chars trước khi truncate
 
-    def build_system_prompt(self, agent: Agent, user_id: str, message: str = "", auto_start: bool = False, extra_system: str | None = None, salutation: str | None = None, is_guest: bool = False) -> str:
+    def build_system_prompt(self, agent: Agent, user_id: str, message: str = "", auto_start: bool = False, extra_system: str | None = None, salutation: str | None = None, is_guest: bool = False, knowledge_enabled: bool = False) -> str:
         # Xưng hô động: nếu đã biết anh/chị → dùng đúng; chưa biết → 'anh/chị' trung tính.
         address = salutation if salutation in ("anh", "chị") else "anh/chị"
         # Inject ngày hiện tại (giờ VN) để model không mặc định "hiện tại" theo mốc training
@@ -299,6 +331,10 @@ class ChatEngine:
             parts.append(_REQUEST_UPDATE_PROMPT_SUFFIX)
             parts.append(_WEB_SEARCH_PROMPT_SUFFIX)
 
+        # RAG: agent có tài liệu → hướng dẫn dùng knowledge_search + trích nguồn (mọi agent).
+        if knowledge_enabled:
+            parts.append(_KNOWLEDGE_PROMPT_SUFFIX)
+
         # Auto-start override ở CUỐI system prompt — vị trí LLM ưu tiên cao nhất.
         # Ghi đè mọi hành vi "hỏi user cần gì" từ persona.
         if auto_start:
@@ -395,7 +431,9 @@ class ChatEngine:
                 skill_names = ", ".join(agent_skills)
                 message = f"Bắt đầu ngay. Thực hiện đầy đủ tất cả skill: {skill_names}. Không hỏi tôi cần gì."
 
-        system = self.build_system_prompt(agent, user_id, message=message, auto_start=auto_start, extra_system=extra_system, salutation=salutation, is_guest=is_guest)
+        # RAG: agent có tài liệu? Tính 1 lần — dùng cho cả prompt suffix lẫn inject tool bên dưới.
+        has_kb = self._knowledge is not None and self._knowledge.has_docs(agent.name)
+        system = self.build_system_prompt(agent, user_id, message=message, auto_start=auto_start, extra_system=extra_system, salutation=salutation, is_guest=is_guest, knowledge_enabled=has_kb)
         # auto_start: bỏ qua history — tránh model follow pattern cũ "agent hỏi ngược" từ các lần test trước.
         history = [] if auto_start else self._memory.get_history(user_id, conv_id, limit=self._history_limit)
 
@@ -469,6 +507,20 @@ class ChatEngine:
                             f"Nguyên văn yêu cầu của user: {original}"
                         ),
                     )
+                return _base(name, args)
+
+        # RAG: agent có tài liệu → inject knowledge_search (gated bởi module bật). has_kb tính 1 lần ở trên.
+        if has_kb:
+            tools = [_KNOWLEDGE_SEARCH_TOOL, *tools]
+            _kb_base = execute
+
+            def execute(name: str, args: dict[str, Any], _base=_kb_base, _agent=agent):  # type: ignore[misc]
+                if name == "knowledge_search":
+                    hits = self._knowledge.search(_agent.name, str(args.get("query", "")))
+                    if not hits:
+                        return ToolResult(content="Không tìm thấy nội dung liên quan trong tài liệu nội bộ.")
+                    parts = [f"[Nguồn: {h.get('source') or 'tài liệu'}]\n{h.get('content', '')}" for h in hits]
+                    return ToolResult(content="\n\n---\n\n".join(parts))
                 return _base(name, args)
 
         assistant_text: list[str] = []
