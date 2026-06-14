@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Iterator
 
 from app.core.models import MASTER_AGENT_NAME, Agent, ChatMessage, ItemStatus
-from app.llm.base import Done, TextDelta, ToolCallEvent, ToolDef, ToolExecutor, ToolResult
+from app.llm.base import Done, TextDelta, ToolCallEvent, ToolDef, ToolExecutor, ToolResult, ToolStartEvent
 from app.tools.base import to_display
 
 log = logging.getLogger(__name__)
@@ -43,6 +43,50 @@ _ESCALATE_TOOL = ToolDef(
         "required": ["reason", "original_message"],
     },
 )
+
+# Tool request_update: agent con KHÔNG tự ghi được vào registry (chỉ master có tool quản trị).
+# Khi user muốn BỔ SUNG/SỬA kiến thức-docs-hành vi của CHÍNH agent này → gọi tool này để
+# delegate về master, master cập nhật qua Flow 4 (pending_changes → admin duyệt). Tránh việc
+# agent "vâng dạ cho có" mà không lưu gì (user tưởng đã cập nhật).
+_REQUEST_UPDATE_TOOL = ToolDef(
+    name="request_update",
+    description=(
+        "Gọi khi user muốn BỔ SUNG/SỬA kiến thức, tài liệu (docs), quy trình hoặc cách trả lời "
+        "của CHÍNH bạn — vd 'bổ sung thêm docs cho em', 'em nên trả lời X theo cách này', "
+        "'cập nhật quy trình Y'. Bạn KHÔNG tự lưu được; tool này chuyển yêu cầu sang Master để "
+        "cập nhật đúng quy trình (có duyệt). KHÔNG hứa 'đã cập nhật' nếu chưa gọi tool này. "
+        "Đây là hành động CUỐI CÙNG trong lượt: KHÔNG nói thêm sau khi gọi."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "change_request": {
+                "type": "string",
+                "description": "Tóm tắt RÕ thay đổi user muốn (nội dung bổ sung/sửa gì, cho phần nào)",
+            },
+            "original_message": {
+                "type": "string",
+                "description": "Nguyên văn yêu cầu của user",
+            },
+        },
+        "required": ["change_request", "original_message"],
+    },
+)
+
+_REQUEST_UPDATE_PROMPT_SUFFIX = """
+# Cập nhật kiến thức của chính mình (QUAN TRỌNG — không được bỏ qua)
+
+Bạn KHÔNG có quyền tự sửa kiến thức/persona/docs của mình. Khi user muốn **bổ sung hoặc
+sửa** kiến thức, tài liệu, quy trình, hoặc cách bạn trả lời (vd *"bổ sung thêm docs cho em"*,
+*"từ giờ em trả lời phần X như thế này"*, *"cập nhật quy trình Y"*):
+
+1. **KHÔNG** nói "em đã cập nhật rồi" / "em ghi nhận và đã lưu" — bạn chưa lưu được gì.
+2. Xác nhận ngắn gọn nội dung user muốn thay đổi (hỏi lại 1 câu nếu còn mơ hồ).
+3. Nói đúng một câu: *"Để em chuyển yêu cầu cập nhật này cho bộ phận quản trị xử lý nhé!"*
+4. Gọi tool `request_update` NGAY với `change_request` tóm tắt rõ thay đổi.
+
+Lưu ý: đây là yêu cầu SỬA CHÍNH BẠN — khác với `escalate` (câu hỏi ngoài chuyên môn).
+"""
 
 _ESCALATION_PROMPT_SUFFIX = """
 # Escalation (KIỂM TRA ĐẦU TIÊN — ưu tiên cao hơn mọi tool)
@@ -139,6 +183,7 @@ class ChatEngine:
         max_tool_rounds: int = 5,
         history_limit: int = 20,
         model: str | None = None,
+        builder_sla_seconds: float | None = None,
     ):
         self._agents = agents
         self._skills = skills
@@ -149,6 +194,8 @@ class ChatEngine:
         self._max_tool_rounds = max_tool_rounds
         self._history_limit = history_limit
         self._model = model
+        # SLA riêng cho master builder (Flow 2): dài hơn để kịp gọi create_* (xem chat_with_tools).
+        self._builder_sla_seconds = builder_sla_seconds
 
     # L-04: giới hạn tổng system prompt ~30k chars ≈ 8k token để không bị model truncate
     _MAX_SYSTEM_CHARS = 30_000
@@ -247,6 +294,9 @@ class ChatEngine:
             # escalate_enabled) — tránh prompt bảo gọi tool không tồn tại.
             if agent.escalate_enabled:
                 parts.append(_ESCALATION_PROMPT_SUFFIX)
+            # request_update luôn được cấp cho agent con → luôn hướng dẫn (hướng A: cập nhật
+            # knowledge của chính agent phải đi qua master, không tự "vâng dạ cho có").
+            parts.append(_REQUEST_UPDATE_PROMPT_SUFFIX)
             parts.append(_WEB_SEARCH_PROMPT_SUFFIX)
 
         # Auto-start override ở CUỐI system prompt — vị trí LLM ưu tiên cao nhất.
@@ -385,8 +435,13 @@ class ChatEngine:
             execute = catalog_execute
 
         # Agent con: inject tool escalate nếu agent có escalate_enabled (I-05: per-agent config).
-        if agent.name != MASTER_AGENT_NAME and agent.escalate_enabled:
-            tools = [_ESCALATE_TOOL, *tools]
+        # Tool request_update LUÔN inject cho agent con (không phụ thuộc escalate_enabled) —
+        # cập nhật knowledge là nhu cầu chung, luôn phải đi qua master để có duyệt (Flow 4).
+        if agent.name != MASTER_AGENT_NAME:
+            extra = [_REQUEST_UPDATE_TOOL]
+            if agent.escalate_enabled:
+                extra = [_ESCALATE_TOOL, *extra]
+            tools = [*extra, *tools]
             _base_execute = execute
 
             def execute(name: str, args: dict[str, Any], _base=_base_execute, _agent=agent, _msg=message):  # type: ignore[misc]
@@ -398,13 +453,33 @@ class ChatEngine:
                         delegate_to=MASTER_AGENT_NAME,
                         delegate_message=f"[Escalated từ @{_agent.name}: {reason}]\n\n{original}",
                     )
+                if name == "request_update":
+                    original = args.get("original_message") or _msg
+                    change = args.get("change_request", "").strip() or original
+                    # Prefix riêng để master nhận diện đây là yêu cầu cập nhật agent (không phải escalate).
+                    return ToolResult(
+                        content="Đang chuyển yêu cầu cập nhật về Master.",
+                        delegate_to=MASTER_AGENT_NAME,
+                        delegate_message=(
+                            f"[Cập nhật agent @{_agent.name}: {change}]\n\n"
+                            f"Nguyên văn yêu cầu của user: {original}"
+                        ),
+                    )
                 return _base(name, args)
 
         assistant_text: list[str] = []
         try:
             if tools:
+                # Master builder (Flow 2, đã đăng nhập): cần SLA dài hơn để kịp gọi create_*
+                # sau khi research. Call thường (Flow 3) bỏ qua → dùng SLA mặc định của client.
+                tool_kwargs: dict[str, Any] = {"max_rounds": self._max_tool_rounds, "model": self._model}
+                if agent.name == MASTER_AGENT_NAME and not is_guest and self._builder_sla_seconds:
+                    tool_kwargs["sla_seconds"] = self._builder_sla_seconds
+                    # Non-stream cho builder: tool_use input lớn (create_skill/create_agent) bị mất
+                    # khi streaming qua MaaS/minimax — xem chat_with_tools.
+                    tool_kwargs["stream"] = False
                 events = self._llm.chat_with_tools(
-                    system, messages, tools, execute, max_rounds=self._max_tool_rounds, model=self._model
+                    system, messages, tools, execute, **tool_kwargs
                 )
             else:
                 # Dead path: ALWAYS_ON_SERVERS luôn có tool nên tools không bao giờ rỗng ở đây.
@@ -414,6 +489,9 @@ class ChatEngine:
                 if isinstance(ev, TextDelta):
                     assistant_text.append(ev.text)
                     yield {"event": "delta", "data": {"text": ev.text}}
+                elif isinstance(ev, ToolStartEvent):
+                    # Signal "tool đang chạy" — UI hiện loading trong lúc execute (websearch chậm).
+                    yield {"event": "tool_start", "data": {"name": to_display(ev.name), "input": ev.input}}
                 elif isinstance(ev, ToolCallEvent):
                     yield {
                         "event": "tool",

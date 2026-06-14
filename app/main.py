@@ -200,6 +200,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         max_tool_rounds=settings.max_tool_rounds,
         history_limit=settings.memory_history_limit,
         model=settings.model,
+        builder_sla_seconds=settings.builder_sla_seconds,
     )
 
     # HM3: self-test sandbox (judge dùng model rẻ qua router_llm)

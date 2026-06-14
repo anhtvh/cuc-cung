@@ -90,8 +90,22 @@ class Governance:
         return user_id in self._admin_ids
 
     def can_edit(self, item: Agent | Skill, user_id: str) -> bool:
-        """Update/submit chỉ owner hoặc admin (Flow 2)."""
+        """Quyền sở hữu (use/submit/delete/attach): owner hoặc admin (Flow 2).
+
+        LƯU Ý: KHÔNG dùng cho update nội dung — xem can_update. can_edit giữ semantics
+        'owner hoặc admin' cho các thao tác khác (submit private của mình, delete, dùng agent).
+        """
         return item.created_by == user_id or self.is_admin(user_id)
+
+    def can_update(self, item: Agent | Skill, user_id: str) -> bool:
+        """Quyền SỬA NỘI DUNG (Flow 4). Quy tắc siết:
+        - Admin (nhà quản lý): sửa được mọi item.
+        - User thường: CHỈ sửa được item của CHÍNH MÌNH và KHI CHƯA public.
+        Item đã public (cả công ty đang dùng) → chỉ nhà quản lý cập nhật được.
+        """
+        if self.is_admin(user_id):
+            return True
+        return item.created_by == user_id and item.status != ItemStatus.public
 
     def can_use_agent(self, agent: Agent, user_id: str) -> bool:
         """Visibility (Flow 1): active+company → mọi người; còn lại chỉ owner/admin."""
@@ -266,8 +280,15 @@ class Governance:
         """Sửa item (Flow 4): draft/rejected → sửa trực tiếp (về draft);
         active → ghi pending_changes, bản active VẪN phục vụ; pending_review → chặn."""
         item = self._get_or_raise(kind, name)
-        if not self.can_edit(item, user_id):
-            raise GovernanceError(f"Chỉ người tạo ({item.created_by}) hoặc admin được sửa '{name}'.")
+        # Quyền update siết (Flow 4): user thường chỉ sửa item của mình & chưa public.
+        if not self.can_update(item, user_id):
+            kind_vn = "agent" if kind == "agent" else "skill"
+            if item.status == ItemStatus.public:
+                raise GovernanceError(
+                    f"{kind_vn.capitalize()} '{name}' đã public — cả công ty đang dùng. "
+                    f"Chỉ nhà quản lý (admin) mới cập nhật được; bạn không thể tự sửa {kind_vn} public."
+                )
+            raise GovernanceError(f"Chỉ người tạo ({item.created_by}) hoặc nhà quản lý được sửa '{name}'.")
         editable = _AGENT_EDITABLE if kind == "agent" else _SKILL_EDITABLE
         unknown = set(fields) - editable
         if unknown:

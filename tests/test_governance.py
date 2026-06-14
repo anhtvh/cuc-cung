@@ -34,7 +34,8 @@ def test_approve_visibility_pending_change_no_crash(governance, agents):
     """Regression Bug#2: approve pending_changes chứa visibility (str) phải coerce về enum."""
     from app.core.models import Visibility
     agents.create(make_agent(status=ItemStatus.public, visibility=Visibility.private))
-    governance.propose_update("agent", "TestAgent", {"visibility": "company"}, "maker")
+    # Agent public → chỉ admin (nhà quản lý) cập nhật được (chính sách siết quyền).
+    governance.propose_update("agent", "TestAgent", {"visibility": "company"}, "admin")
     assert agents.get("TestAgent").pending_changes == {"visibility": "company"}
     governance.approve("agent", "TestAgent", "admin")
     got = agents.get("TestAgent")
@@ -130,8 +131,9 @@ def test_reject_requires_reason_and_is_not_terminal(governance, agents, skills):
 def test_edit_active_goes_to_pending_changes(governance, skills):
     """Flow 4: active → sửa vào pending_changes, bản active VẪN phục vụ; duyệt → version+1."""
     skills.create(make_skill(status=ItemStatus.public))
+    # Skill public → chỉ admin cập nhật được (chính sách siết quyền).
     governance.propose_update(
-        "skill", "test-skill-mot", {"content": "# Quy trình v2\n1. Bước mới."}, "maker"
+        "skill", "test-skill-mot", {"content": "# Quy trình v2\n1. Bước mới."}, "admin"
     )
     s = skills.get("test-skill-mot")
     assert s.status == ItemStatus.public
@@ -147,7 +149,7 @@ def test_edit_active_goes_to_pending_changes(governance, skills):
 
 def test_reject_pending_changes_keeps_active_version(governance, skills):
     skills.create(make_skill(status=ItemStatus.public))
-    governance.propose_update("skill", "test-skill-mot", {"content": "# xấu"}, "maker")
+    governance.propose_update("skill", "test-skill-mot", {"content": "# xấu"}, "admin")
     governance.reject("skill", "test-skill-mot", "admin", "nội dung sai quy trình")
     s = skills.get("test-skill-mot")
     assert s.status == ItemStatus.public

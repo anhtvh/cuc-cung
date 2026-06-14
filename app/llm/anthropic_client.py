@@ -16,6 +16,7 @@ from app.llm.base import (
     LLMEvent,
     TextDelta,
     ToolCallEvent,
+    ToolStartEvent,
     ToolDef,
     ToolExecutor,
     ToolResult,
@@ -23,6 +24,9 @@ from app.llm.base import (
 )
 
 log = logging.getLogger(__name__)
+
+# Sentinel: phân biệt "không truyền sla_seconds" (dùng default client) với "truyền None" (tắt SLA).
+_SLA_DEFAULT = object()
 
 # Nudge ép model tổng hợp khi chạm SLA — không cho tra cứu thêm.
 _SLA_NUDGE = (
@@ -89,8 +93,21 @@ class AnthropicMaaSClient:
         execute: ToolExecutor,
         max_rounds: int = 5,
         model: str | None = None,
+        sla_seconds: float | None = _SLA_DEFAULT,
+        stream: bool = True,
     ) -> Iterator[LLMEvent]:
-        """Vòng lặp tool-use (Flow 2/3): stream → tool_use → thực thi → tool_result → lặp."""
+        """Vòng lặp tool-use (Flow 2/3): stream → tool_use → thực thi → tool_result → lặp.
+
+        sla_seconds: override SLA cho lượt này. Mặc định (_SLA_DEFAULT) dùng SLA của client;
+        master builder cần ngưỡng dài hơn để kịp gọi create_* (xem chat_engine).
+
+        stream=False: dùng messages.create() (non-streaming). BẮT BUỘC cho master builder —
+        bug MaaS/minimax: tool_use input LỚN (vd content skill markdown ~15k ký tự) bị MẤT khi
+        streaming (block.input rỗng → KeyError 'name'); non-streaming trả input đầy đủ. Args nhỏ
+        (websearch query, url) stream bình thường nên Flow 3 vẫn dùng stream=True.
+        """
+        # Override SLA per-call: sentinel = giữ default client; None = tắt cắt-tool; số = ngưỡng riêng.
+        effective_sla = self._sla_seconds if sla_seconds is _SLA_DEFAULT else sla_seconds
         api_tools = [
             {"name": t.name, "description": t.description, "input_schema": t.input_schema}
             for t in tools
@@ -103,7 +120,7 @@ class AnthropicMaaSClient:
 
         for _round in range(max_rounds):
             # Quá SLA → vòng này KHÔNG cấp tool nữa, model buộc trả lời trên data đã có.
-            over_sla = self._sla_seconds is not None and (time.monotonic() - start) > self._sla_seconds
+            over_sla = effective_sla is not None and (time.monotonic() - start) > effective_sla
             round_tools = None if over_sla else api_tools
 
             stream_kwargs: dict[str, Any] = {
@@ -116,10 +133,17 @@ class AnthropicMaaSClient:
                 stream_kwargs["tools"] = round_tools
 
             try:
-                with self._client.messages.stream(**stream_kwargs) as stream:
-                    for text in stream.text_stream:
-                        yield TextDelta(text)
-                    final = stream.get_final_message()
+                if stream:
+                    with self._client.messages.stream(**stream_kwargs) as s:
+                        for text in s.text_stream:
+                            yield TextDelta(text)
+                        final = s.get_final_message()
+                else:
+                    # Non-stream: lấy nguyên message rồi yield text các block (an toàn args lớn).
+                    final = self._client.messages.create(**stream_kwargs)
+                    for block in final.content:
+                        if block.type == "text":
+                            yield TextDelta(block.text)
             except APITimeoutError:
                 # Request treo quá timeout → không để chết im lặng: trả lời an toàn rồi dừng.
                 log.warning("MaaS request timeout sau %.1fs — trả lời fallback", time.monotonic() - start)
@@ -157,6 +181,11 @@ class AnthropicMaaSClient:
                 break
 
             if final.stop_reason != "tool_use":
+                # max_tokens = model bị cắt giữa chừng (thường do thinking ngốn budget) →
+                # phản hồi cụt, chưa kịp gọi tool. Log để không dừng im lặng như trước.
+                if final.stop_reason == "max_tokens":
+                    log.warning("round %d bị cắt do max_tokens (=%d) — cân nhắc tăng max_tokens",
+                                _round, self._max_tokens)
                 break
 
             # Serialize lại content block thủ công — chỉ giữ field API cần.
@@ -169,6 +198,8 @@ class AnthropicMaaSClient:
                     assistant_content.append(
                         {"type": "tool_use", "id": block.id, "name": block.name, "input": block.input}
                     )
+                    # Báo UI tool sắp chạy (signal trong lúc execute — websearch/fetch chậm).
+                    yield ToolStartEvent(name=block.name, input=block.input or {})
                     result = execute(block.name, block.input or {})
                     yield ToolCallEvent(name=block.name, input=block.input or {}, result=result)
                     tool_results.append(
@@ -183,7 +214,7 @@ class AnthropicMaaSClient:
             convo.append({"role": "user", "content": tool_results})
 
             # Vừa execute tool xong mà đã quá SLA → chèn nudge để vòng kế (no-tool) tổng hợp ngay.
-            if self._sla_seconds is not None and (time.monotonic() - start) > self._sla_seconds:
+            if effective_sla is not None and (time.monotonic() - start) > effective_sla:
                 convo.append({"role": "user", "content": [{"type": "text", "text": _SLA_NUDGE}]})
         else:
             # hết max_rounds mà model vẫn đòi tool → dừng lượt (an toàn Flow 3)

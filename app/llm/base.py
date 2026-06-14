@@ -42,6 +42,14 @@ class TextDelta:
 
 
 @dataclass
+class ToolStartEvent:
+    # Phát TRƯỚC khi execute tool — để UI báo "đang chạy" trong lúc tool xử lý
+    # (websearch/fetch có thể mất 10-15s, trước đây không có signal nào cho user).
+    name: str
+    input: dict[str, Any]
+
+
+@dataclass
 class ToolCallEvent:
     name: str
     input: dict[str, Any]
@@ -55,7 +63,7 @@ class Done:
     stop_reason: str | None = None
 
 
-LLMEvent = TextDelta | ToolCallEvent | Done
+LLMEvent = TextDelta | ToolStartEvent | ToolCallEvent | Done
 
 
 class LLMClient(Protocol):

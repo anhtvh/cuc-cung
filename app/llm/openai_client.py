@@ -18,6 +18,7 @@ from app.llm.base import (
     ToolCallEvent,
     ToolDef,
     ToolExecutor,
+    ToolStartEvent,
     parse_json_loose,
 )
 
@@ -66,6 +67,8 @@ class OpenAIMaaSClient:
         execute: ToolExecutor,
         max_rounds: int = 5,
         model: str | None = None,
+        sla_seconds: float | None = None,  # parity với AnthropicMaaSClient; Plan B chưa xử lý SLA
+        stream: bool = True,  # parity; Plan B chưa tách stream/non-stream
     ) -> Iterator[LLMEvent]:
         api_tools = [
             {
@@ -149,6 +152,7 @@ class OpenAIMaaSClient:
                     args = json.loads(tc_dict["function"]["arguments"] or "{}")
                 except json.JSONDecodeError:
                     args = {}
+                yield ToolStartEvent(name=tc_dict["function"]["name"], input=args)
                 result = execute(tc_dict["function"]["name"], args)
                 yield ToolCallEvent(name=tc_dict["function"]["name"], input=args, result=result)
                 tool_content = result.content if not result.is_error else f"LỖI: {result.content}"

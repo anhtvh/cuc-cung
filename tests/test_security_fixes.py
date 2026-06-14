@@ -65,7 +65,8 @@ class TestLowerVisibilityNoCrash:
     def test_public_agent_lower_to_private_applies_immediately(self, governance, agents):
         """Hạ visibility public→private áp dụng ngay, KHÔNG ném AttributeError (Visibility.public)."""
         agents.create(make_agent(status=ItemStatus.public, visibility=Visibility.company))
-        item = governance.propose_update("agent", "TestAgent", {"visibility": "private"}, "maker")
+        # Agent public → chỉ admin cập nhật được (chính sách siết quyền).
+        item = governance.propose_update("agent", "TestAgent", {"visibility": "private"}, "admin")
         assert item.visibility == Visibility.private
         assert item.status == ItemStatus.public  # vẫn active, chỉ siết phạm vi
 
@@ -75,7 +76,7 @@ class TestLowerVisibilityNoCrash:
         item = governance.propose_update(
             "agent", "TestAgent",
             {"visibility": "company", "description": "Mô tả mới rõ ràng. Dùng khi cần test."},
-            "maker",
+            "admin",
         )
         assert item.pending_changes  # thay đổi chờ duyệt
         assert item.status == ItemStatus.public
@@ -84,4 +85,4 @@ class TestLowerVisibilityNoCrash:
         agents.create(make_agent(status=ItemStatus.public, visibility=Visibility.company))
         from app.core.governance import GovernanceError
         with pytest.raises(GovernanceError, match="visibility"):
-            governance.propose_update("agent", "TestAgent", {"visibility": "world"}, "maker")
+            governance.propose_update("agent", "TestAgent", {"visibility": "world"}, "admin")

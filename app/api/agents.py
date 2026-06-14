@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 from app.api.deps import Container, get_container, get_user_id, require_login
 from app.core.governance import GovernanceError
-from app.core.models import MASTER_AGENT_NAME, Visibility
+from app.core.models import MASTER_AGENT_NAME, ItemStatus, Visibility
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -88,12 +88,17 @@ def update_agent(
     c: Container = Depends(get_container),
     user: object = Depends(require_login),
 ):
-    """Edit agent — chỉ owner hoặc admin. Active agent → ghi pending_changes."""
+    """Edit agent — user thường chỉ sửa agent của mình & chưa public; agent public chỉ nhà quản lý."""
     agent = c.agents.get(name)
     if agent is None or name == MASTER_AGENT_NAME:
         raise HTTPException(status_code=404, detail=f"agent '{name}' không tồn tại")
-    if not c.governance.can_edit(agent, user.email):
-        raise HTTPException(status_code=403, detail="Bạn không có quyền sửa agent này")
+    if not c.governance.can_update(agent, user.email):
+        detail = (
+            f"Agent '{name}' đã public — chỉ nhà quản lý (admin) mới cập nhật được."
+            if agent.status == ItemStatus.public
+            else "Bạn không có quyền sửa agent này"
+        )
+        raise HTTPException(status_code=403, detail=detail)
 
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if not updates:

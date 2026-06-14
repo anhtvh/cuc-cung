@@ -573,6 +573,9 @@ async function _triggerAgentAutoStart(agentName, slug) {
           }
           turnAddStep(assistantDiv, toolStepHtml(data), data.is_error ? "err" : "");
           showTyping();
+        } else if (ev === "tool_start") {
+          // Tool đang chạy (vd websearch ~10s) — hiện loading để user biết đang xử lý.
+          showTyping();
         } else if (ev === "delegate") {
           // Agent con auto-start escalate → chuyển về Master (luôn là escalation ở đây).
           _pendingDelegate = { agent_name: data.agent_name, message: data.message, isEscalation: true };
@@ -862,8 +865,11 @@ const builderTracker = {
     create_skill:      { label: 'Tạo skill',                 phase: 'build' },
     create_agent:      { label: 'Tạo agent',                 phase: 'build' },
     update_agent:      { label: 'Cập nhật agent',            phase: 'build' },
+    update_skill:      { label: 'Cập nhật skill',            phase: 'build' },
     delete_agent:      { label: 'Xóa agent',                 phase: 'build' },
     attach_skill:      { label: 'Gắn skill vào agent',       phase: 'build' },
+    fetch_url:         { label: 'Đọc tài liệu tham khảo',    phase: 'build' },
+    self_test_agent:   { label: 'Kiểm thử agent',            phase: 'review' },
     submit_for_review: { label: 'Nộp duyệt',                 phase: 'review' },
   },
 
@@ -898,6 +904,7 @@ const builderTracker = {
     if (name === 'attach_skill'      && input?.skill_name) return `Gắn skill: <code>${esc(input.skill_name)}</code>`;
     if (name === 'submit_for_review' && input?.name) return `Nộp duyệt: <code>@${esc(input.name)}</code>`;
     if (name === 'update_agent'      && input?.name)       return `Cập nhật: <code>@${esc(input.name)}</code>`;
+    if (name === 'update_skill'      && input?.name)       return `Cập nhật skill: <code>${esc(input.name)}</code>`;
     return this.TOOLS[name]?.label || name;
   },
 
@@ -1148,6 +1155,11 @@ $("#chat-form").addEventListener("submit", async (e) => {
             addHandoff(data.agent_name, data.agent_description || "");
           }
           _lastRoutedAgent = data.agent_name;
+
+        } else if (ev === "tool_start") {
+          // Tool sắp/đang chạy (vd websearch, fetch ~10-15s) — hiện loading để user
+          // biết agent đang xử lý, tránh cảm giác "agent đã trả lời xong nhưng treo".
+          showTyping();
 
         } else if (ev === "delta") {
           hideTyping();
@@ -1768,7 +1780,7 @@ function escJs(s) {
 
 function highlightMentionsHtml(text) {
   return esc(text).replace(/@([a-z][a-z0-9-]*)/g, (_, slug) => {
-    const isMaster = slug === "daitongquan" || slug === "master";
+    const isMaster = slug === "cuc-cung" || slug === "master";
     const a = isMaster ? null : _agentsCache.find(x => x.slug === slug);
     const display = isMaster ? "Cục cưng" : (a?.name || slug);
     return `<span class="mention-tag">@${esc(display)}</span>`;
@@ -1919,7 +1931,7 @@ function selectMention(name) {
 }
 
 const _MASTER_MENTION_ENTRY = {
-  name: "Cục cưng", slug: "daitongquan",
+  name: "Cục cưng", slug: "cuc-cung",
   description: "Tạo agent mới hoặc kết nối bạn với đúng chuyên gia",
   domain: "master", status: "public",
 };
@@ -2269,8 +2281,10 @@ async function loadMyAgents() {
       const st = a.status;
       const color = statusColor[st] || "#94a3b8";
       const label = statusBadge[st] || st;
-      // Sửa được khi không đang chờ duyệt
-      const canEdit = st !== "pending_review";
+      const isAdmin = state.user?.role === "admin";
+      // Sửa được khi không chờ duyệt VÀ (chưa public HOẶC là nhà quản lý).
+      // Agent public = cả công ty đang dùng → chỉ admin cập nhật được (governance.can_update).
+      const canEdit = st !== "pending_review" && (st !== "public" || isAdmin);
       // Xóa được khi đang nháp hoặc bị từ chối (status-based, không phải visibility)
       const canDelete = st === "private" || st === "rejected";
       const canSubmit = st === "private";
@@ -2282,6 +2296,8 @@ async function loadMyAgents() {
         shareNote = a.visibility === "company"
           ? `✅ Cả công ty đang dùng${a.calls ? ` · ${a.calls} lượt` : ""}`
           : "🙈 Đang ẩn khỏi công ty (chỉ mình bạn dùng)";  // public + private = tạm ẩn (I4)
+        // Siết quyền: agent đã public chỉ nhà quản lý cập nhật được.
+        if (!isAdmin) shareNote += "<br>🛡️ Đã duyệt — chỉ nhà quản lý cập nhật được";
       } else if (st === "pending_review") {
         shareNote = "⏳ Chờ duyệt — duyệt xong cả công ty dùng được";
       } else if (st === "private") {

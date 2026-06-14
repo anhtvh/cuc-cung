@@ -137,11 +137,19 @@ class TestEditAgent:
 
     def test_edit_public_goes_to_pending_changes(self, governance, agents):
         agents.create(make_agent(status=ItemStatus.public))
-        governance.propose_update("agent", "TestAgent", {"description": "Mô tả cập nhật. Dùng khi test cập nhật."}, "maker")
+        # Agent public → chỉ admin (nhà quản lý) cập nhật được; bản sửa vào pending_changes.
+        governance.propose_update("agent", "TestAgent", {"description": "Mô tả cập nhật. Dùng khi test cập nhật."}, "admin")
         a = agents.get("TestAgent")
         assert a.status == ItemStatus.public  # bản active vẫn phục vụ
         assert a.pending_changes is not None
         assert "description" in a.pending_changes
+
+    def test_edit_public_by_owner_blocked(self, governance, agents):
+        """Chính sách siết: chủ agent (non-admin) KHÔNG sửa được agent đã public."""
+        from app.core.governance import GovernanceError
+        agents.create(make_agent(status=ItemStatus.public, created_by="maker"))
+        with pytest.raises(GovernanceError, match="public"):
+            governance.propose_update("agent", "TestAgent", {"description": "Mô tả mới. Dùng khi cần."}, "maker")
 
     def test_edit_non_owner_blocked(self, governance, agents):
         agents.create(make_agent())

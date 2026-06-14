@@ -26,13 +26,21 @@ class Settings(BaseSettings):
     # Model rẻ cho router/classify — rủi ro #3 credit cạn.
     # qwen3-5-27b là thinking model, content=None → dùng gemma (non-thinking, classify OK).
     router_model: str = "google/gemma-4-31b-it"
-    max_tokens: int = 4096
+    # max_tokens: int = 4096  # cũ — quá nhỏ: minimax-m2.5 là reasoning model, block `thinking`
+    # ngốn hết budget ngay round 0 → stop_reason=max_tokens, chưa kịp gọi tool create_agent
+    # (lỗi "không thấy phản hồi" khi tạo agent). Nâng để chừa chỗ cho thinking + text + tool_use.
+    max_tokens: int = 16384
     # An toàn tool loop (Flow 3): tối đa 10 vòng tool/lượt, timeout mỗi tool.
     max_tool_rounds: int = 10
     tool_timeout_seconds: int = 15
     # SLA trả lời (~1 phút): khi tool loop vượt ngưỡng này, ép model trả lời NGAY
     # trên dữ liệu đã thu thập (không cho gọi thêm tool) — tránh treo do search/đọc dài.
     response_sla_seconds: int = 55
+    # SLA RIÊNG cho master builder (Flow 2 tạo agent): master cần research + nhiều bước
+    # create_skill/create_agent/attach/submit. Dùng SLA 55s như Flow 3 sẽ gỡ tool ghi giữa
+    # chừng → master nói "bắt đầu tạo" nhưng không gọi được create. Cho ngưỡng dài hơn;
+    # max_tool_rounds + timeout mỗi request vẫn là chốt chặn treo.
+    builder_sla_seconds: int = 240
     # Timeout từng request HTTP tới MaaS — chặn 1 call treo vô hạn (an toàn cho SLA trên).
     llm_request_timeout_seconds: int = 45
     # Router classify là call ngắn, chạy TRƯỚC khi stream — timeout ngắn để fallback master nhanh.

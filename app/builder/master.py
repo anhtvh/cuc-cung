@@ -114,6 +114,26 @@ MASTER_TOOLS: list[ToolDef] = [
         },
     ),
     ToolDef(
+        name="update_skill",
+        description=(
+            "Sửa skill ĐÃ TỒN TẠI: bổ sung/đổi content (docs, quy trình), description hoặc domain. "
+            "DÙNG cái này (KHÔNG phải create_skill) khi user muốn bổ sung kiến thức cho agent đang có. "
+            "Private/rejected: áp dụng ngay. Active (public): bản sửa vào hàng chờ admin duyệt, bản đang chạy vẫn phục vụ; "
+            "duyệt xong version+1 và mọi agent gắn skill tự cập nhật. "
+            "content là TOÀN BỘ markdown mới (đã ghép phần bổ sung) — không phải chỉ phần thêm."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Tên skill cần sửa (xem qua get_agent_detail/list_skills)"},
+                "description": {"type": "string"},
+                "content": {"type": "string", "description": "Toàn bộ markdown mới sau khi bổ sung/sửa"},
+                "domain": {"type": "string"},
+            },
+            "required": ["name"],
+        },
+    ),
+    ToolDef(
         name="attach_skill",
         description="Gắn một skill có sẵn vào agent (quan hệ n:n). Nội dung skill sẽ được inject vào system prompt của agent lúc chat.",
         input_schema={
@@ -253,6 +273,7 @@ _GUEST_BLOCKED_TOOLS = {
     "create_agent",
     "create_skill",
     "update_agent",
+    "update_skill",
     "delete_agent",
     "attach_skill",
     "submit_for_review",
@@ -435,6 +456,15 @@ class MasterToolset:
             return ToolResult(content=f"agent '{args['name']}' không tồn tại hoặc bạn không có quyền xem.", is_error=True)
         data = agent.model_dump(mode="json")
         data["skills"] = self._agents.skills_of(agent.name)
+        # Hint quyền cập nhật để master trả lời đúng: agent public → chỉ admin sửa được.
+        data["can_update"] = self._gov.can_update(agent, self._user_id)
+        if not data["can_update"]:
+            data["update_note"] = (
+                "Agent này đã public — chỉ nhà quản lý (admin) cập nhật được. "
+                "Không gọi update_agent/update_skill cho agent này; thay vào đó báo user liên hệ nhà quản lý."
+                if agent.status == ItemStatus.public
+                else "Bạn không phải người tạo agent này nên không sửa được."
+            )
         return _ok(data)
 
     def _h_list_skills(self, args: dict) -> ToolResult:
@@ -518,6 +548,17 @@ class MasterToolset:
         item = self._gov.propose_update("agent", name, fields, self._user_id)
         if item.status == ItemStatus.public:
             return _ok({"updated": name, "note": "Agent đang active — bản sửa đã vào hàng chờ admin duyệt, bản đang chạy vẫn phục vụ."})
+        return _ok({"updated": name, "status": item.status.value})
+
+    def _h_update_skill(self, args: dict) -> ToolResult:
+        # Sửa skill đã tồn tại (Flow 4): bổ sung/đổi content (docs), description, domain.
+        # Skill active → ghi pending_changes, bản active vẫn chạy; draft/rejected → sửa trực tiếp.
+        # Dùng cho yêu cầu "bổ sung docs" mà agent con chuyển sang (request_update).
+        name = str(args.get("name"))
+        fields = {k: v for k, v in args.items() if v is not None and k != "name"}
+        item = self._gov.propose_update("skill", name, fields, self._user_id)
+        if item.status == ItemStatus.public:
+            return _ok({"updated": name, "note": "Skill đang active — bản sửa đã vào hàng chờ admin duyệt, bản đang chạy vẫn phục vụ. Sau khi duyệt, version+1 và mọi agent gắn skill này tự cập nhật."})
         return _ok({"updated": name, "status": item.status.value})
 
     def _h_create_skill(self, args: dict) -> ToolResult:
