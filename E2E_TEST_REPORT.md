@@ -142,3 +142,31 @@ Cơ chế routing/handoff giờ **đúng** (Bug #4 đã fix). Nhưng *agent có 
 | Marker escalation luôn về master (mọi sticky) | ✓ deterministic (unit + HTTP) |
 
 *Lưu ý: `escalate_enabled` (per-agent, default True) tắt được để agent domain chặt không escalate sớm — nhưng KHÔNG có trong `AgentEditRequest` của API `PUT /agents`, chỉ set qua master tool `update_agent`. Nếu UI muốn cho user toggle thì cần bổ sung field.*
+
+---
+
+# Đợt 3 — Trải nghiệm view-user (Tier 1 đầy đủ + Tier 2 chọn lọc)
+
+Mục tiêu: "trải nghiệm đúng & tốt", không chỉ "có chạy". Seed thêm Bé Bếp (cooking) + Trợ Lý HR (draft của user An). 3 persona qua JWT, LLM live cho nhóm Tier 2.
+
+## ✅ PASS — chức năng & UX đúng
+| Nhóm | Kịch bản | Kết quả |
+|---|---|---|
+| **A. History** | sidebar restore (F5), load messages, rename, delete (sạch + không lộ conv khác), empty state, **guest KHÔNG persist** | ✓ |
+| **C. Upload** | .txt/.md/.docx trích đúng; ảnh detect bằng **magic bytes** (jpeg giả .png → đúng image/jpeg); >5MB→413; định dạng lạ→415; PDF hỏng→422 thân thiện | ✓ |
+| **C8. Upload→thẩm định** | upload hợp đồng → Bé Pháp đọc nội dung, lập bảng rủi ro (bắt điều khoản đơn phương chấm dứt) | ✓ |
+| **D. Feedback** | 👍/👎 ghi nhận, validate rating, admin stats tổng hợp đúng, non-admin xem stats→403 | ✓ |
+| **E. Catalog** | list + lọc domain; chi tiết agent: skills, connectors (nhãn) | ✓ |
+| **F. Của tôi (lifecycle)** | tạo→draft; sửa draft áp ngay; **đổi visibility (verify Bug#2 trên UI path — hết 500)**; submit→**tự nâng company (Bug#3)**→approve→**Bình thấy**; sửa active→pending_changes (bản cũ vẫn chạy)→approve áp dụng; owner xoá active bị chặn, admin xoá được | ✓ |
+| **B. Memory** | multi-turn nhớ đúng (mã HĐ + đối tác); memory **tách theo (user,agent)** — agent khác không biết | ✓ |
+| **H. Orchestration** | `@A @B` → orchestrate → master `run_agent`×2 chạy cả 2 agent + tổng hợp | ✓ |
+| **I. Web-search** | câu real-time in-domain → search→fetch DuckDuckGo thật, trả kết quả có nguồn | ✓ |
+| **K. Resilience** | rate-limit→429 thân thiện; lỗi giữa stream→meta gửi trước rồi error event (không crash/blank); empty state hợp lý | ✓ |
+
+## 🟡 Quan sát UX (không phải bug chặn — đề xuất cải thiện)
+1. **Lỗi giữa stream lộ message thô của provider** (vd `Error code: 404 - {...model not found}`) ra UI. Nên sanitize thành câu thân thiện ("Hệ thống đang bận, thử lại nhé"). *(Dễ fix)*
+2. **`last_text` preview ở sidebar dính `\n\n` đầu** → preview trông trống. Nên `.strip()` khi lưu conv_meta. *(Trivial)*
+3. **Dedup không proactive khi tạo trùng**: user mô tả ý trùng Bé Bếp → master vào phỏng vấn luôn, không cảnh báo "đã có agent tương tự" (đôi khi bỏ qua `list_agents`). Hard-block tên/slug trùng + dedup ở review vẫn chặn, nhưng user có thể mất công. Nên siết `master_system.md`: luôn `list_agents` + nêu agent trùng trước khi build. *(Behavioral/prompt)*
+4. **Bất đối xứng validate**: sửa 1 field (visibility/desc) re-validate TOÀN payload (gồm persona ≥200) → có thể chặn thao tác nhỏ; trong khi `submit`/`approve` KHÔNG re-validate. Chỉ lộ khi persona <200 (tạo chuẩn không xảy ra). Cân nhắc thống nhất. *(Edge, minor)*
+
+**Kết luận đợt 3:** trải nghiệm user các tính năng cốt lõi **đúng và mượt**; không phát sinh bug chặn mới. 4 điểm trên là cải thiện UX tăng độ hoàn thiện.
