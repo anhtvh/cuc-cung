@@ -6,6 +6,7 @@
 # Data & state
 data/
 *.db
+reviews/  # file markdown review do agent MrReviewer sinh ra (save_review)
 
 # Python
 __pycache__/

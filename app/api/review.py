@@ -10,7 +10,6 @@ from pydantic import BaseModel
 from app.api.deps import Container, get_container, require_admin
 from app.core.governance import GovernanceError
 from app.core.models import MASTER_AGENT_NAME, ItemStatus
-from app.storage.sql import MessageRow, UsageRow
 
 router = APIRouter(prefix="/review", tags=["review"])
 
@@ -42,6 +41,7 @@ def pending(c: Container = Depends(get_container), admin: str = Depends(require_
         agents.append(
             {
                 "name": a.name,
+                "slug": a.slug,
                 "description": a.description,
                 "system_prompt": a.system_prompt,  # TOÀN VĂN persona
                 "domain": a.domain,
@@ -102,9 +102,6 @@ def reject(
 @router.get("/admin/stats")
 def admin_stats(c: Container = Depends(get_container), _admin: str = Depends(require_admin)):
     """Dashboard admin: usage token, feedback, tổng số tài nguyên."""
-    from sqlalchemy.orm import Session
-    from app.storage.sql import make_engine
-
     # Counts
     all_agents = c.agents.list()
     all_skills = c.skills.list()

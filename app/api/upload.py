@@ -26,6 +26,8 @@ def _detect_image_type(raw: bytes) -> str | None:
 @router.post("/upload")
 async def upload_file(file: UploadFile):
     raw = await file.read()
+    if not raw:
+        raise HTTPException(422, "File rỗng — không có nội dung để xử lý")
     if len(raw) > MAX_BYTES:
         raise HTTPException(413, "File quá lớn (tối đa 5 MB)")
 

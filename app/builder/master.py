@@ -342,47 +342,21 @@ class MasterToolset:
     # --- read ---
 
     def _h_fetch_url(self, args: dict) -> ToolResult:
-        import ipaddress
         import re
-        import socket as _socket
         import httpx
         from bs4 import BeautifulSoup
-        from urllib.parse import urlparse
-
-        _PRIVATE_NETS = [
-            ipaddress.ip_network("10.0.0.0/8"),
-            ipaddress.ip_network("172.16.0.0/12"),
-            ipaddress.ip_network("192.168.0.0/16"),
-            ipaddress.ip_network("127.0.0.0/8"),
-            ipaddress.ip_network("169.254.0.0/16"),  # cloud metadata endpoint (AWS/GCP)
-            ipaddress.ip_network("::1/128"),
-            ipaddress.ip_network("fc00::/7"),
-            ipaddress.ip_network("fe80::/10"),
-        ]
-
-        def _safe_url(u: str) -> str | None:
-            parsed = urlparse(u)
-            host = parsed.hostname or ""
-            if not host:
-                return "URL thiếu hostname"
-            try:
-                resolved = _socket.gethostbyname(host)
-                ip = ipaddress.ip_address(resolved)
-                if any(ip in net for net in _PRIVATE_NETS):
-                    return f"URL trỏ đến địa chỉ nội mạng ({resolved}) — không được phép vì lý do bảo mật"
-            except (_socket.gaierror, ValueError):
-                pass  # không resolve được → để httpx xử lý lỗi tự nhiên
-            return None
+        # SSRF guard dùng chung app.tools.net.safe_get — kiểm IP nội mạng ở MỌI hop
+        # redirect (guard cũ chỉ kiểm URL gốc, bị bypass qua 302 → 169.254.169.254).
+        from app.tools.net import SsrfBlocked, safe_get
 
         url: str = str(args["url"]).strip()
         if not url.startswith(("http://", "https://")):
             return ToolResult(content="URL phải bắt đầu bằng http:// hoặc https://", is_error=True)
-        ssrf_err = _safe_url(url)
-        if ssrf_err:
-            return ToolResult(content=ssrf_err, is_error=True)
         try:
-            resp = httpx.get(url, timeout=10, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0"})
+            resp = safe_get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
             resp.raise_for_status()
+        except SsrfBlocked as e:
+            return ToolResult(content=str(e), is_error=True)
         except httpx.TimeoutException:
             return ToolResult(content=f"Timeout khi fetch '{url}' (>10s) — thử URL khác hoặc nhờ user copy/paste nội dung.", is_error=True)
         except httpx.HTTPStatusError as e:

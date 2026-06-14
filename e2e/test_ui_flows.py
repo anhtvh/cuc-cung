@@ -47,7 +47,8 @@ def test_catalog_renders_seeded_agent(make_page):
     page.locator('[data-tab="catalog"]').click()
     catalog = page.locator("#panel-catalog")
     expect(catalog).to_have_class(re.compile(r"\bactive\b"))
-    expect(catalog.get_by_text("Bé Pháp").first).to_be_visible()
+    # "Upia" là agent seed thực tế (seeds/demo_data.py _UPIA_AGENT_NAME)
+    expect(catalog.get_by_text("Upia").first).to_be_visible()
 
 
 # ── Quick-create: validate tên (regression bug hôm nay) ─────────────────
@@ -86,9 +87,11 @@ def test_quickcreate_rejects_empty_name(make_page):
 def test_mobile_viewport_core_usable(make_page):
     page = make_page("user", viewport={"width": 390, "height": 844})
     page.goto("/web/", wait_until="networkidle")
-    # Nav + hero hiển thị, không vỡ; chuyển sang Chat được
-    expect(page.locator('[data-tab="chat"]')).to_be_visible()
+    # Hero hiển thị đúng
     expect(page.locator(".home-hero h1")).to_be_visible()
+    # Mobile nav ẩn sau burger (translateY(-130%)) → mở trước khi click tab
+    page.locator("#nav-burger").click()
+    expect(page.locator("#nav")).to_have_class(re.compile(r"\bopen\b"))
     page.locator('[data-tab="chat"]').click()
     expect(page.locator("#chat-input")).to_be_visible()
     # Không tràn ngang (body width không vượt viewport)

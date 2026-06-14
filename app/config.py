@@ -127,8 +127,7 @@ class Settings(BaseSettings):
     @property
     def admin_ids(self) -> set[str]:
         ids = {u.strip() for u in self.admin_user_ids.split(",") if u.strip()}
-        if self.admin_email:
-            ids.add(self.admin_email)
+        ids |= {e.strip() for e in self.admin_email.split(",") if e.strip()}
         return ids
 
 

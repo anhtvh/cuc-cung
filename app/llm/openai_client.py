@@ -8,7 +8,7 @@ import json
 import logging
 from typing import Any, Iterator
 
-from openai import OpenAI
+from openai import BadRequestError, OpenAI
 
 from app.core.models import ChatMessage
 from app.llm.base import (
@@ -177,7 +177,10 @@ class OpenAIMaaSClient:
         }
         try:
             resp = self._client.chat.completions.create(**kwargs, response_format={"type": "json_object"})
-        except Exception:  # noqa: BLE001 — model không hỗ trợ response_format → bỏ tham số
+        except BadRequestError:
+            # Chỉ retry khi model KHÔNG hỗ trợ response_format (HTTP 400) → bỏ tham số.
+            # Lỗi khác (timeout/auth/network) để propagate — caller (router) tự fallback,
+            # tránh tốn thêm 1 call full vô ích.
             resp = self._client.chat.completions.create(**kwargs)
         content = resp.choices[0].message.content
         # Một số model trả content=None khi thinking vẫn bật hoặc hết token — fallback an toàn.

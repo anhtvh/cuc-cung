@@ -14,11 +14,16 @@ import secrets
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from app.auth.jwt_utils import verify
 from app.auth.models import GuestUser, UserInfo
 
 log = logging.getLogger(__name__)
+
+# Khi guest_mode=False: guest CHỈ được vào các path cần để đăng nhập / tải trang login /
+# health-check. Mọi path khác trả 401. Để FE biết phải hiện màn login trước khi gọi API.
+_GUEST_ALLOWED_PREFIXES = ("/auth", "/web", "/health", "/healthz", "/static")
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -26,6 +31,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self._secret = jwt_secret
         self._guest_mode = guest_mode
+
+    def _guest_blocked(self, path: str) -> bool:
+        """guest_mode tắt → chặn guest, trừ path đăng nhập/static/health và '/' (redirect)."""
+        if self._guest_mode:
+            return False
+        if path == "/":
+            return False
+        return not path.startswith(_GUEST_ALLOWED_PREFIXES)
 
     async def dispatch(self, request: Request, call_next):
         token = request.cookies.get("session")
@@ -46,6 +59,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     log.warning("JWT payload malformed, treating as guest")
 
         is_guest = isinstance(user, GuestUser)
+
+        # Enforce guest_mode=False: khách chưa đăng nhập bị chặn ở các route bảo vệ.
+        if is_guest and self._guest_blocked(request.url.path):
+            return JSONResponse(
+                {"detail": "Vui lòng đăng nhập để sử dụng hệ thống."},
+                status_code=401,
+            )
+
         new_guest_cookie: str | None = None
 
         if is_guest:

@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from app.api.deps import Container, get_container, get_user_id, require_admin
+from app.api.deps import Container, get_container, require_admin, require_login
 
 router = APIRouter(prefix="/feedback", tags=["feedback"])
 
@@ -18,11 +18,14 @@ class FeedbackRequest(BaseModel):
 def submit_feedback(
     req: FeedbackRequest,
     c: Container = Depends(get_container),
-    user_id: str = Depends(get_user_id),
+    user: object = Depends(require_login),  # chặn guest (id tạm) spam feedback → méo thống kê
 ):
     if req.rating not in (1, -1):
         raise HTTPException(status_code=422, detail="rating phải là 1 (tốt) hoặc -1 (tệ)")
-    c.feedback.add(user_id, req.agent_name, req.rating, req.message_preview)
+    # Validate agent tồn tại — tránh ghi feedback rác cho agent không có trong registry.
+    if c.agents.get(req.agent_name) is None:
+        raise HTTPException(status_code=404, detail=f"agent '{req.agent_name}' không tồn tại")
+    c.feedback.add(user.email, req.agent_name, req.rating, req.message_preview)
     return {"ok": True}
 
 

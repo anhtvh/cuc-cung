@@ -33,8 +33,10 @@ from app.memory.sql_memory import SqlMemory
 from app.storage.sql import SqlAgentRepo, SqlConvMetaRepo, SqlFeedbackRepo, SqlSkillRepo, SqlUsageRepo, SqlUserRepo, make_engine
 from app.tools.catalog import SystemProvider, ToolCatalog
 from app.tools.mcp_gateway import IamTokenProvider, McpGatewayProvider
+from app.tools.partner_integration import PartnerIntegrationProvider
 from app.tools.mock.company_docs import CompanyDocsProvider
 from app.tools.mock.contract_db import ContractDbProvider
+from app.tools.mock.gitlab import GitlabProvider
 from app.tools.mock.web_search import WebSearchProvider
 from seeds.demo_data import ensure_seed
 
@@ -169,7 +171,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
     else:
         web_search_provider = WebSearchProvider()
-    providers = [SystemProvider(), ContractDbProvider(), CompanyDocsProvider(), web_search_provider]
+    providers = [
+        SystemProvider(),
+        ContractDbProvider(),
+        CompanyDocsProvider(),
+        PartnerIntegrationProvider(),
+        GitlabProvider(),  # mock GitLab cho agent MrReviewer (Flow 5)
+        web_search_provider,
+    ]
     catalog = ToolCatalog(providers, tool_timeout_seconds=settings.tool_timeout_seconds)
     governance = Governance(
         agents=agents,
@@ -198,7 +207,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if settings.self_test_enabled:
         tester = AgentTester(engine=chat_engine, llm=router_llm, judge_model=settings.router_model, sandbox_rounds=settings.self_test_sandbox_rounds)
 
-    ensure_seed(agents, skills)
+    ensure_seed(agents, skills, governance)
 
     # Seed admin user từ env ADMIN_EMAIL + ADMIN_PASSWORD
     if settings.admin_email and settings.admin_password:

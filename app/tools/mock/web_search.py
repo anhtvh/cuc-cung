@@ -8,15 +8,15 @@ Tools:
   fetch  — tải nội dung full một trang web, trả plain text đã làm sạch (≤6000 ký tự)
 """
 
-import ipaddress
 import json
 import logging
 import re
-import socket as _socket
 from typing import Any
-from urllib.parse import urlparse
 
 from app.llm.base import ToolDef
+# SSRF guard chuyển sang app.tools.net.safe_get — kiểm IP nội mạng ở MỌI hop redirect,
+# không chỉ URL gốc (guard cũ _ssrf_check + follow_redirects=True bị bypass qua 302).
+from app.tools.net import SsrfBlocked, safe_get
 
 log = logging.getLogger(__name__)
 
@@ -28,34 +28,7 @@ _FALLBACK_RESULTS = [
     }
 ]
 
-_PRIVATE_NETS = [
-    ipaddress.ip_network("10.0.0.0/8"),
-    ipaddress.ip_network("172.16.0.0/12"),
-    ipaddress.ip_network("192.168.0.0/16"),
-    ipaddress.ip_network("127.0.0.0/8"),
-    ipaddress.ip_network("169.254.0.0/16"),
-    ipaddress.ip_network("::1/128"),
-    ipaddress.ip_network("fc00::/7"),
-    ipaddress.ip_network("fe80::/10"),
-]
-
 _MAX_FETCH_CHARS = 12_000
-
-
-def _ssrf_check(url: str) -> str | None:
-    """Trả error message nếu URL trỏ vào mạng nội bộ, None nếu OK."""
-    parsed = urlparse(url)
-    host = parsed.hostname or ""
-    if not host:
-        return "URL thiếu hostname"
-    try:
-        resolved = _socket.gethostbyname(host)
-        ip = ipaddress.ip_address(resolved)
-        if any(ip in net for net in _PRIVATE_NETS):
-            return f"URL trỏ đến địa chỉ nội mạng ({resolved}) — không được phép"
-    except (_socket.gaierror, ValueError):
-        pass
-    return None
 
 
 def _ddg_search(query: str, n: int) -> list[dict]:
@@ -83,17 +56,14 @@ def _fetch_page(url: str) -> dict:
 
     if not url.startswith(("http://", "https://")):
         return {"error": "URL phải bắt đầu bằng http:// hoặc https://"}
-    err = _ssrf_check(url)
-    if err:
-        return {"error": err}
     try:
-        resp = httpx.get(
-            url, timeout=5, follow_redirects=True,
-            headers={"User-Agent": "Mozilla/5.0"},
-        )
+        # safe_get: kiểm SSRF ở mỗi hop redirect (chống 302 → IP nội mạng).
+        resp = safe_get(url, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
         resp.raise_for_status()
+    except SsrfBlocked as e:
+        return {"error": str(e)}
     except httpx.TimeoutException:
-        return {"error": f"Timeout khi fetch '{url}' (>10s)"}
+        return {"error": f"Timeout khi fetch '{url}' (>5s)"}
     except httpx.HTTPStatusError as e:
         return {"error": f"HTTP {e.response.status_code} khi fetch '{url}'"}
     except Exception as e:  # noqa: BLE001

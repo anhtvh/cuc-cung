@@ -10,7 +10,7 @@ const state = {
   convStore: new Map(), // Map<agentKey, {key, agentName, agentMeta, container, lastText, updatedAt}>
 };
 
-const domainIcon = { legal: "⚖️", finance: "💰", sales: "📊", hr: "👥", ops: "⚙️", it: "💻" };
+/* svgIcon + domainIcon: định nghĩa trong ui-icons.js (load trước app.js) */
 
 function headers(extra = {}) {
   // Cookie được gửi tự động (same-origin) — không cần header auth thêm
@@ -139,9 +139,10 @@ window.submitAdminLogin = async function() {
       errEl.textContent = d.detail || "Đăng nhập thất bại";
       return;
     }
-    const me = await r.json();
-    state.user = me;
-    state.userId = me.email;
+    // Re-fetch /auth/me để lấy full user object (login response thiếu id, picture)
+    const me = await fetch("/auth/me").then((r2) => r2.json());
+    state.user = me.role === "guest" ? null : me;
+    state.userId = me.email || email;
     $("#auth-modal").hidden = true;
     renderUserPill();
     refreshTabsForUser();
@@ -208,12 +209,12 @@ function renderHomeAgents() {
 
   const cards = active.map((a) => {
     const callsBadge = a.calls >= 5
-      ? `<span class="ahc-popular">🔥 Phổ biến</span>`
+      ? `<span class="ahc-popular">${svgIcon("fire")} Phổ biến</span>`
       : a.calls > 0
         ? `<span class="ahc-calls">${a.calls} lần</span>`
         : "";
     return `<div class="ahc" onclick="startChatWith('${escJs(a.name)}','${escJs(a.tagline || a.description)}')">
-      <span class="ahc-icon">${domainIcon[a.domain] || "🤖"}</span>
+      <span class="ahc-icon">${domainIcon[a.domain] || svgIcon("bot")}</span>
       <div class="ahc-name">${esc(a.name)}${callsBadge}</div>
       <div class="ahc-slug">@${esc(a.slug || a.name)}</div>
       <div class="ahc-desc">${esc(a.tagline || a.description.split(/[.。]/)[0].slice(0, 80))}</div>
@@ -300,7 +301,7 @@ async function showWelcome() {
   const quickCards = active.slice(0, 6).map((a) => {
     const hint = a.tagline || a.description.split(/[.。]/)[0].slice(0, 48);
     return `<button class="wcard" data-msg="${esc(hint)}">
-      <span class="wcard-icon">${domainIcon[a.domain] || "🤖"}</span>
+      <span class="wcard-icon">${domainIcon[a.domain] || svgIcon("bot")}</span>
       <div class="wcard-name">${esc(a.name)}</div>
       <div class="wcard-hint">${esc(hint)}</div>
     </button>`;
@@ -315,12 +316,12 @@ async function showWelcome() {
     <p class="welcome-sub">Cục cưng đây — bạn cần gì hôm nay?</p>
     <div class="welcome-paths">
       <button class="welcome-path wp-chat">
-        <span class="welcome-path-icon">💬</span>
+        <span class="welcome-path-icon">${svgIcon("chat")}</span>
         <div class="welcome-path-title">Hỏi bất cứ thứ gì</div>
         <div class="welcome-path-desc">Cứ gõ tự nhiên — mình tự tìm đúng người giúp bạn</div>
       </button>
       <button class="welcome-path wp-create">
-        <span class="welcome-path-icon">✨</span>
+        <span class="welcome-path-icon">${svgIcon("sparkle")}</span>
         <div class="welcome-path-title">Đặt hàng trợ lý riêng</div>
         <div class="welcome-path-desc">Mô tả việc cần → mình tạo chuyên gia ngay tức thì</div>
       </button>
@@ -408,7 +409,7 @@ function renderSubAgentCard(agentName, output, isError) {
   const card = document.createElement("div");
   card.className = "subagent-card" + (isError ? " subagent-card-error" : "");
   const agentData = _agentsCache.find((a) => a.slug === agentName || a.name === agentName);
-  const icon = domainIcon[agentData?.domain] || "🤖";
+  const icon = domainIcon[agentData?.domain] || svgIcon("bot");
   const label = agentData?.name || agentName;
   card.innerHTML = `
     <div class="sac-header">
@@ -427,12 +428,12 @@ function renderSubAgentCard(agentName, output, isError) {
    Gom các bước xử lý (gọi tool, suy nghĩ trung gian) vào 1 khối thu gọn được,
    TÁCH khỏi câu trả lời cuối — giống cách Claude hiển thị tool-use. */
 const TOOL_LABELS = {
-  "web-search.search": "🔎 Tìm kiếm web",
-  "web-search.fetch":  "🌐 Đọc nội dung trang",
+  "web-search.search": `${svgIcon("search")} Tìm kiếm web`,
+  "web-search.fetch":  `${svgIcon("globe")} Đọc trang`,
 };
 
 function toolStepHtml(data) {
-  const base = TOOL_LABELS[data.name] || `🔧 ${esc(data.name)}`;
+  const base = TOOL_LABELS[data.name] || `${svgIcon("wrench")} ${esc(data.name)}`;
   const inp = data.input || {};
   const arg = inp.query || inp.url || inp.q || inp.keyword || inp.name || "";
   const detail = arg ? ` <span class="ps-arg">${esc(String(arg).slice(0, 90))}</span>` : "";
@@ -447,8 +448,8 @@ function turnProcess(assistantDiv) {
     proc.className = "turn-process open";
     proc.innerHTML =
       `<button type="button" class="proc-toggle">` +
-        `<span class="proc-ic">⚙</span>` +
-        `<span class="proc-label">Đang làm việc…</span>` +
+        `<span class="proc-ic">${svgIcon("loader")}</span>` +
+        `<span class="proc-label">Đang xử lý…</span>` +
         `<span class="proc-caret">▾</span>` +
       `</button><div class="proc-body"></div>`;
     assistantDiv.insertBefore(proc, assistantDiv.querySelector(".msg-content"));
@@ -474,7 +475,7 @@ function finalizeTurnProcess(assistantDiv) {
   if (!proc) return;
   proc.classList.remove("open");            // thu gọn khi xong — kết quả cuối nổi bật
   proc.classList.add("done");
-  proc.querySelector(".proc-ic").textContent = "✓";
+  proc.querySelector(".proc-ic").innerHTML = svgIcon("check");
 }
 
 function addHandoff(name, description) {
@@ -724,7 +725,7 @@ function updateChatHeader(agentName) {
   const nameEl = $("#chd-name");
   const subEl  = $("#chd-sub");
   if (!agentName) {
-    avatar.textContent = "✦";
+    avatar.innerHTML = svgIcon("sparkle");
     avatar.className   = "chd-avatar chd-avatar-auto";
     nameEl.textContent = "Tự điều phối";
     subEl.textContent  = "Hệ thống tự tìm agent phù hợp nhất";
@@ -758,7 +759,7 @@ function renderSidebar() {
     const agentName  = e.agentName;
     const displayName = !agentName ? "Tự điều phối" : agentName === "master" ? "Cục cưng" : agentName;
     const convTitle   = e.title || displayName;
-    const firstChar   = !agentName ? "✦" : agentName[0].toUpperCase();
+    const firstChar   = !agentName ? svgIcon("sparkle") : esc(agentName[0].toUpperCase());
     const domain = e.agentMeta?.domain || (agentName === "master" ? "master" : !agentName ? "auto" : "default");
     const preview = (e.lastText || "…").slice(0, 48);
     return `<div class="conv-item${isActive ? " active" : ""}" onclick="switchToConv('${esc(e.key)}')" data-key="${esc(e.key)}">
@@ -904,11 +905,11 @@ const builderTracker = {
     if (!this.el) return;
     const stepsHtml = this.steps.map((s) => `
       <div class="bt-step ${s.isError ? 'error' : 'done'}">
-        <span class="bt-icon">${s.isError ? '❌' : '✅'}</span>
+        <span class="bt-icon">${s.isError ? svgIcon("xmark") : svgIcon("check")}</span>
         <span class="bt-label">${s.label}</span>
       </div>`).join('');
     this.el.innerHTML = `
-      <div class="bt-header">🔨 Đang xây dựng cho bạn…</div>
+      <div class="bt-header">${svgIcon("wrench")} Đang xây dựng…</div>
       <div class="bt-steps">${stepsHtml}</div>`;
     scrollBottom();
   },
@@ -921,7 +922,7 @@ const builderTracker = {
 
     const stepsHtml = this.steps.map((s) => `
       <div class="bt-step ${s.isError ? 'error' : 'done'}">
-        <span class="bt-icon">${s.isError ? '❌' : '✅'}</span>
+        <span class="bt-icon">${s.isError ? svgIcon("xmark") : svgIcon("check")}</span>
         <span class="bt-label">${s.label}</span>
       </div>`).join('');
 
@@ -987,7 +988,7 @@ function showAgentBirthPopup(agentName) {
         <div class="abc-line" id="abl-3">[&nbsp;READY&nbsp;&nbsp;]&nbsp;STATUS — <span style="color:#6ee7b7">ONLINE ✓</span></div>
       </div>
       <div class="abc-divider" id="abc-divider"></div>
-      <div class="abc-avatar" id="abc-avatar">🤖</div>
+      <div class="abc-avatar" id="abc-avatar">${svgIcon("bot")}</div>
       <div class="abc-name"  id="abc-name"></div>
       <div class="abc-greeting-wrap">
         <span class="abc-greeting" id="abc-greeting"></span><span class="abc-cursor">▊</span>
@@ -1213,6 +1214,24 @@ $("#chat-form").addEventListener("submit", async (e) => {
     if (assistantDiv) {
       const mc = assistantDiv.querySelector(".msg-content");
       if (mc) mc.innerHTML = renderMarkdown(assistantText);
+
+      // Fallback: model gọi nhiều tool nhưng không sinh kết quả cuối (minimax pattern) →
+      // lấy nội dung "think" step cuối cùng trong accordion lên bubble chính.
+      if (!assistantText.trim()) {
+        const proc = assistantDiv.querySelector(".turn-process");
+        const thinkSteps = proc ? proc.querySelectorAll(".proc-step.think") : [];
+        if (thinkSteps.length > 0) {
+          const lastThink = thinkSteps[thinkSteps.length - 1].querySelector(".ps-think");
+          if (lastThink && mc) {
+            mc.innerHTML = lastThink.innerHTML;
+            assistantText = lastThink.innerText || lastThink.textContent || "";
+            lastThink.closest(".proc-step").remove();
+            const remaining = proc.querySelectorAll(".proc-step");
+            if (remaining.length === 0) proc.remove();
+          }
+        }
+      }
+
       // SLA: agent bị cắt do chạm giới hạn thời gian / timeout → báo user biết câu trả lời
       // dựa trên dữ liệu hiện có, không phải lỗi treo.
       if (lastStopReason === "sla_deadline" || lastStopReason === "timeout") {
@@ -1477,10 +1496,10 @@ function makerName(email) {
 }
 
 function mpCard(a) {
-  const icon = domainIcon[a.domain] || "🤖";
+  const icon = domainIcon[a.domain] || svgIcon("bot");
   const domainLabel = { legal:"Pháp lý", finance:"Tài chính", sales:"Sales", hr:"Nhân sự", ops:"Vận hành", it:"IT" }[a.domain] || (a.domain || "");
   const tagline = a.tagline || a.description.split(/[.。]/)[0].slice(0, 90);
-  const callsBit = a.calls >= 5 ? `🔥 ${a.calls} lượt` : a.calls > 0 ? `${a.calls} lượt` : "";
+  const callsBit = a.calls >= 5 ? `Phổ biến · ${a.calls} lượt` : a.calls > 0 ? `${a.calls} lượt` : "";
   const makerBit = a.created_by ? `tạo bởi ${makerName(a.created_by)}` : "";
   const meta = [domainLabel, makerBit, callsBit].filter(Boolean).join(" · ");
   const safeTag = esc(tagline);
@@ -1554,7 +1573,7 @@ async function loadReview() {
 
   for (const a of data.agents) {
     blocks.push(`<div class="review-card">
-      <h3>🤖 ${esc(a.name)} <code class="agent-slug">@${esc(a.slug || a.name)}</code> <span class="badge ${a.status}">${a.status}</span></h3>
+      <h3>${svgIcon("bot")} ${esc(a.name)} <code class="agent-slug">@${esc(a.slug || a.name)}</code> <span class="badge ${a.status}">${a.status}</span></h3>
       <div class="review-meta">Tạo bởi ${a.created_by} · domain: ${a.domain || "—"} · ${a.visibility}</div>
       <div class="review-desc">${esc(a.description)}</div>
       <details open><summary>Persona prompt</summary><pre>${esc(a.system_prompt)}</pre></details>
@@ -1762,7 +1781,7 @@ function renderInline(s) {
   const codes = [];
   let h = String(s ?? "").replace(/`([^`\n]+)`/g, (_m, c) => {
     codes.push(c);
-    return `${codes.length - 1}`;
+    return `\u0001${codes.length - 1}\u0001`;
   });
   h = esc(h);
   // Link [text](url) — chỉ http/https
@@ -1774,12 +1793,26 @@ function renderInline(s) {
   // @mention
   h = h.replace(/@([a-z][a-z0-9-]*)/g, '<span class="mention-tag">@$1</span>');
   // Khôi phục inline code
-  h = h.replace(/(\d+)/g, (_m, i) => `<code>${esc(codes[i])}</code>`);
+  h = h.replace(/\u0001(\d+)\u0001/g, (_m, i) => `<code>${esc(codes[i])}</code>`);
   return h;
 }
 
-/* Block-level markdown → HTML: heading, list (ul/ol), code fence, quote, hr, paragraph.
+/* Block-level markdown → HTML: heading, list (ul/ol), code fence, quote, hr, table, paragraph.
    Đủ cho chat agent — không phải full CommonMark nhưng xử lý đúng các pattern thường gặp. */
+function buildTableHtml(rows) {
+  const isSep = (r) => {
+    const cells = r.split("|").slice(1, -1);
+    return cells.length > 0 && cells.every((c) => /^[\s\-:]+$/.test(c));
+  };
+  const parseRow = (r) => r.split("|").slice(1, -1).map((c) => c.trim());
+  const dataRows = rows.filter((r, i) => !(i === 1 && isSep(r)));
+  const headerCells = parseRow(dataRows[0] || "");
+  const bodyRows = dataRows.slice(1);
+  const ths = headerCells.map((h) => `<th>${renderInline(h)}</th>`).join("");
+  const trs = bodyRows.map((r) => `<tr>${parseRow(r).map((c) => `<td>${renderInline(c)}</td>`).join("")}</tr>`).join("");
+  return `<div class="md-table-wrap"><table class="md-table"><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table></div>`;
+}
+
 function renderMarkdown(src) {
   if (!src) return "";
 
@@ -1787,56 +1820,61 @@ function renderMarkdown(src) {
   const blocks = [];
   let text = String(src).replace(/```(\w*)\n?([\s\S]*?)```/g, (_m, _lang, code) => {
     blocks.push(`<pre class="code-block"><code>${esc(code.replace(/\n$/, ""))}</code></pre>`);
-    return ` ${blocks.length - 1} `;
+    return `\u0000${blocks.length - 1}\u0000`;
   });
 
   const out = [];
   let para = [];
   let quote = [];
   let listTag = null; // 'ul' | 'ol'
+  let tableRows = []; // accumulate |..| lines
 
   const flushPara = () => { if (para.length) { out.push("<p>" + renderInline(para.join(" ")) + "</p>"); para = []; } };
   const closeList = () => { if (listTag) { out.push(`</${listTag}>`); listTag = null; } };
   const flushQuote = () => { if (quote.length) { out.push("<blockquote>" + renderInline(quote.join(" ")) + "</blockquote>"); quote = []; } };
-  const flushAll = () => { flushPara(); flushQuote(); closeList(); };
+  const flushTable = () => { if (tableRows.length) { out.push(buildTableHtml(tableRows)); tableRows = []; } };
+  const flushAll = () => { flushPara(); flushQuote(); closeList(); flushTable(); };
 
   for (const raw of text.split("\n")) {
     const line = raw.replace(/\s+$/, "");
-    const cbMatch = line.match(/^ (\d+) $/);
+    const cbMatch = line.match(/^\u0000(\d+)\u0000$/);
 
     if (cbMatch) {                                   // code block độc lập
       flushAll();
       out.push(blocks[+cbMatch[1]]);
     } else if (!line.trim()) {                       // dòng trống → ngắt block
       flushAll();
+    } else if (/^\|.+\|/.test(line)) {              // table row
+      flushPara(); flushQuote(); closeList();
+      tableRows.push(line);
     } else if (/^#{1,6}\s+/.test(line)) {            // heading
       flushAll();
       const m = line.match(/^(#{1,6})\s+(.*)$/);
       const lvl = Math.min(m[1].length, 4);          // h5/h6 dồn về h4 cho gọn
       out.push(`<h${lvl}>${renderInline(m[2])}</h${lvl}>`);
     } else if (/^\s*[-*+]\s+/.test(line) && !/^\s*([-*_])\1{2,}\s*$/.test(line)) { // bullet
-      flushPara(); flushQuote();
+      flushPara(); flushQuote(); flushTable();
       if (listTag !== "ul") { closeList(); out.push("<ul>"); listTag = "ul"; }
       out.push("<li>" + renderInline(line.replace(/^\s*[-*+]\s+/, "")) + "</li>");
     } else if (/^\s*\d+\.\s+/.test(line)) {           // numbered list
-      flushPara(); flushQuote();
+      flushPara(); flushQuote(); flushTable();
       if (listTag !== "ol") { closeList(); out.push("<ol>"); listTag = "ol"; }
       out.push("<li>" + renderInline(line.replace(/^\s*\d+\.\s+/, "")) + "</li>");
     } else if (/^\s*([-*_])\1{2,}\s*$/.test(line)) {  // horizontal rule
       flushAll();
       out.push("<hr>");
     } else if (/^>\s?/.test(line)) {                  // blockquote
-      flushPara(); closeList();
+      flushPara(); closeList(); flushTable();
       quote.push(line.replace(/^>\s?/, ""));
     } else {                                          // text thường → gộp vào paragraph
-      flushQuote(); closeList();
+      flushQuote(); closeList(); flushTable();
       para.push(line.trim());
     }
   }
   flushAll();
 
   // 2) Khôi phục code block còn sót (vd nằm trong paragraph)
-  return out.join("\n").replace(/ (\d+) /g, (_m, i) => blocks[+i]);
+  return out.join("\n").replace(/\u0000(\d+)\u0000/g, (_m, i) => blocks[+i]);
 }
 
 /* ─── @mention dropdown ─────────────────────────────────── */
@@ -1846,7 +1884,7 @@ function showMentionDropdown(agents) {
   mention.selIdx = 0;
   dd.innerHTML = agents.slice(0, 6).map((a, i) => `
     <div class="mention-item${i === 0 ? " active" : ""}" data-name="${esc(a.slug || a.name)}">
-      <span class="mi-icon">${domainIcon[a.domain] || "🤖"}</span>
+      <span class="mi-icon">${domainIcon[a.domain] || svgIcon("bot")}</span>
       <span class="mi-name">${esc(a.name)}</span>
       <span class="mi-handle">@${esc(a.slug || a.name)}</span>
       <span class="mi-desc">${esc(a.tagline || a.description.split(/[.。]/)[0].slice(0, 60))}</span>
@@ -1992,7 +2030,7 @@ function qcRenderStep(n) {
 }
 
 function qcRenderPreview() {
-  const domainLabels = { legal:"⚖️ Legal", finance:"💰 Finance", sales:"📊 Sales", hr:"👥 HR", ops:"⚙️ Operations", it:"💻 IT", other:"📌 Khác" };
+  const domainLabels = { legal:"Pháp lý", finance:"Tài chính", sales:"Sales", hr:"Nhân sự", ops:"Vận hành", it:"IT", other:"Khác" };
   $("#prev-name").textContent = "@" + qc.name;
   $("#prev-domain").textContent = domainLabels[qc.domain] || qc.domain;
   $("#prev-purpose").textContent = qc.purpose;
@@ -2253,13 +2291,13 @@ async function loadMyAgents() {
       const safeAgent = esc(JSON.stringify(a));
       return `<div class="mp-card">
         <div class="mp-card-hd">
-          <span class="mp-icon">${domainIcon[a.domain] || "🤖"}</span>
+          <span class="mp-icon">${domainIcon[a.domain] || svgIcon("bot")}</span>
           <span class="mp-badge" style="background:${color}22;color:${color}">${label}</span>
         </div>
         <div class="mp-name">${esc(a.name)}</div>
         <div class="mp-desc">${esc(a.tagline || a.description.slice(0, 80))}</div>
         ${shareNote ? `<div class="mp-share-note">${shareNote}</div>` : ""}
-        ${a.review_note ? `<div class="mp-review-note">💬 ${esc(a.review_note)}</div>` : ""}
+        ${a.review_note ? `<div class="mp-review-note">${svgIcon("chat")} ${esc(a.review_note)}</div>` : ""}
         <div class="mp-actions">
           ${canEdit ? `<button class="btn-sm" data-agent="${safeAgent}" onclick="openAgentEditModal(JSON.parse(this.dataset.agent))">Sửa</button>` : ""}
           ${canSubmit ? `<button class="btn-sm btn-sm-primary" onclick="submitMyAgent('${esc(a.name)}')">Gửi duyệt</button>` : ""}

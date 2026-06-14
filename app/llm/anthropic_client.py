@@ -8,7 +8,7 @@ import logging
 import time
 from typing import Any, Iterator
 
-from anthropic import Anthropic, APITimeoutError
+from anthropic import Anthropic, APIConnectionError, APIStatusError, APITimeoutError
 
 from app.core.models import ChatMessage
 from app.llm.base import (
@@ -125,6 +125,24 @@ class AnthropicMaaSClient:
                 log.warning("MaaS request timeout sau %.1fs — trả lời fallback", time.monotonic() - start)
                 yield TextDelta(_TIMEOUT_FALLBACK)
                 yield Done(input_tokens=total_in, output_tokens=total_out, stop_reason="timeout")
+                return
+            except APIStatusError as e:
+                # 429 rate-limit, 500/502/503 server error từ MaaS → fallback thay vì bubble up.
+                log.warning("MaaS API status %d (round %d): %s", e.status_code, _round, e.message[:200])
+                msg = (
+                    "_(Dịch vụ AI đang bận, mình trả lời dựa trên dữ liệu đã có. "
+                    "Bạn thử lại sau giây lát nếu cần thêm thông tin nhé.)_"
+                    if e.status_code in (429, 503)
+                    else _TIMEOUT_FALLBACK
+                )
+                yield TextDelta(msg)
+                yield Done(input_tokens=total_in, output_tokens=total_out, stop_reason=f"api_error_{e.status_code}")
+                return
+            except APIConnectionError as e:
+                # Mạng đứt / DNS fail / TLS error → fallback an toàn.
+                log.warning("MaaS connection error (round %d): %s", _round, e)
+                yield TextDelta(_TIMEOUT_FALLBACK)
+                yield Done(input_tokens=total_in, output_tokens=total_out, stop_reason="connection_error")
                 return
 
             total_in += final.usage.input_tokens
