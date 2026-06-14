@@ -170,3 +170,28 @@ Mục tiêu: "trải nghiệm đúng & tốt", không chỉ "có chạy". Seed t
 4. **Bất đối xứng validate** — ✅ FIX: `submit_for_review` re-validate payload (đối xứng `propose_update`, fail-safe không để item invalid lên public). Regression test trong `test_governance.py`.
 
 **Kết luận đợt 3:** trải nghiệm user các tính năng cốt lõi **đúng và mượt**; không phát sinh bug chặn. 4 điểm UX nêu trên đều đã xử lý. Tổng **121/121 unit test pass**.
+
+---
+
+# Đợt 4 — Verify end-to-end flow tạo agent (sau restart app)
+
+Restart app với DB sạch để seed sync `master_system.md` mới (xác nhận prompt bước-1-dedup đã vào DB). Drive flow tạo agent thật qua master, góc nhìn user An, LLM live.
+
+| Bước | Kết quả |
+|---|---|
+| Turn 1 — "tạo agent viết JD tuyển dụng" | Master gọi `list_agents`/`list_skills` **NGAY** (dedup proactive #3), xác nhận chưa có → mới phỏng vấn ✓ |
+| Turn 2 — cấp đủ thông tin | Master soạn **draft skill + persona** cho user xem trước khi tạo ✓ |
+| Turn 3 — xác nhận tạo | `create_skill` → `create_agent` → `attach_skill` → agent **VietJD_IT** (draft, skill gắn, slug `vietjd-it`) ✓ |
+| Dùng thử ngay (owner) | JD in-domain → tạo JD đủ 3 phần ✓ |
+| Scope-guard | "viết hợp đồng lao động" (off-domain) → `routed_by=escalate` → master ✓ (#4/#5 chạy trên agent vừa tạo) |
+| Submit | pending + **visibility tự nâng `company`** (#3) ✓ |
+| Admin approve skill + agent | active ✓ |
+| Cross-user | Bình **thấy + dùng được** VietJD_IT, tạo JD thành công ✓ |
+
+**Kết luận cuối:** toàn bộ chuỗi *mô tả → dedup-check → phỏng vấn → draft → tạo → dùng thử → escalate → submit → duyệt → chia sẻ công ty* chạy thông suốt với tất cả fix tích hợp. Platform sẵn sàng demo.
+
+---
+
+## Tổng kết toàn bộ (4 đợt e2e)
+**6 bug + 4 quan sát UX — tất cả ĐÃ FIX & verify; 121/121 unit test pass.**
+1. Boot/login crash bcrypt (CRITICAL) · 2. Visibility 500 · 3. Approve vô hình công ty · 4. Escalate loop ngược · 5. Escalate flaky (scope-guard B+C) · 6. Lỗi-stream lộ raw · 7. Preview dính newline · 8. Dedup proactive · 9. Validate đối xứng.
