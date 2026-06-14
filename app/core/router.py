@@ -87,7 +87,21 @@ class IntentRouter:
 
         # 2. UI chọn / sticky session → dùng luôn (kể cả master).
         if agent_name:
-            if agent_name == MASTER_AGENT_NAME or agent_name in candidates:
+            if agent_name == MASTER_AGENT_NAME:
+                return RouteDecision(agent_name=agent_name, routed_by="explicit")
+            if agent_name in candidates:
+                # Scope-guard (B): agent con có escalate_enabled → check rẻ xem câu có thuộc
+                # chuyên môn không. Off-scope rõ ràng → chuyển Master NGAY (deterministic),
+                # không phụ thuộc model lớn nhớ gọi tool escalate. Web-search vẫn cấp cho mọi
+                # agent — guard này mới là thứ giữ agent "đúng lane". Tắt bằng escalate_enabled=False.
+                _agent = candidates[agent_name]
+                if _agent.escalate_enabled and not self._in_scope(_agent, message):
+                    log.info("scope-guard: '%s' off-scope cho @%s → escalate Master", message[:40], agent_name)
+                    return RouteDecision(
+                        agent_name=MASTER_AGENT_NAME,
+                        routed_by="escalate",
+                        note=f"Câu hỏi ngoài chuyên môn của @{agent_name} — chuyển về Cục cưng để tìm người phù hợp.",
+                    )
                 return RouteDecision(agent_name=agent_name, routed_by="explicit")
             # L-09: sticky agent không còn visible (bị reject/private) → fallback master,
             # KHÔNG classify lại vì có thể route sang agent không liên quan mà user không hay.
@@ -117,3 +131,29 @@ class IntentRouter:
 
         # 4. null / low / không có ứng viên → MASTER (Flow 5 kịch bản: master đề nghị tạo mới).
         return RouteDecision(agent_name=MASTER_AGENT_NAME, routed_by="fallback_master")
+
+    def _in_scope(self, agent, message: str) -> bool:
+        """Scope-guard (B): 1 call model rẻ — câu hỏi có thuộc chuyên môn agent không?
+
+        Bảo thủ + fail-open: chỉ trả False khi RÕ RÀNG thuộc lĩnh vực khác; tin nhắn ngắn
+        (chào/cảm ơn), câu mơ hồ, hoặc lỗi LLM → True (không escalate nhầm, không chặn chat).
+        """
+        msg = (message or "").strip()
+        if len(msg) < 12:  # chào hỏi/xác nhận ngắn — không escalate
+            return True
+        try:
+            result = self._llm.classify_json(
+                system=(
+                    "Bạn quyết định một yêu cầu có thuộc PHẠM VI CHUYÊN MÔN của một trợ lý hay không. "
+                    "Chỉ trả in_scope=false khi yêu cầu RÕ RÀNG thuộc một lĩnh vực chuyên môn KHÁC "
+                    "(vd trợ lý pháp lý nhưng user hỏi nấu ăn, du lịch, dịch thuật). "
+                    "Chào hỏi, cảm ơn, câu nối tiếp ngữ cảnh, hoặc câu mơ hồ → in_scope=true."
+                ),
+                message=f"Trợ lý: {agent.name} — {agent.description}\n\nYêu cầu của user: {msg}",
+                schema_hint='{"in_scope": true|false}',
+                model=self._router_model,
+            )
+            return bool(result.get("in_scope", True))
+        except Exception as e:  # noqa: BLE001 — scope-check lỗi → coi như in-scope (fail-open)
+            log.warning("scope-guard lỗi → coi như in_scope: %s", e)
+            return True

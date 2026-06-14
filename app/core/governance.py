@@ -438,6 +438,19 @@ class Governance:
                 "Cân nhắc thêm phạm vi rõ, format output, hoặc ví dụ cụ thể."
             )
 
+        # Scope-guard check (C): persona nên nêu rõ cách xử lý câu NGOÀI chuyên môn → escalate,
+        # không tự dùng web-search trả lời ngoài lane (đồng bộ với scope-guard ở router + prompt engine).
+        scope_guard_ok = any(
+            k in prompt_lower
+            for k in ["escalate", "chuyển về", "nhờ người", "ngoài chuyên môn", "ngoài phạm vi", "không thuộc chuyên môn"]
+        )
+        if not scope_guard_ok:
+            warnings.append(
+                "Persona chưa nêu cách xử lý câu NGOÀI chuyên môn — thêm 1 câu: "
+                "'Nếu user hỏi ngoài [lĩnh vực], không tự trả lời mà chuyển/escalate để tìm người phù hợp.' "
+                "Giúp agent giữ đúng lane, không dùng web-search trả lời lạc đề."
+            )
+
         # Tone/pronoun check
         tone_ok = any(k in prompt_lower for k in ["xưng em", "xưng \"em\"", "xưng 'em'", "thân thiện", "gần gũi", "dễ thương"])
         if not tone_ok:

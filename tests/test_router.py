@@ -12,11 +12,38 @@ def _setup(agents, governance, fake_llm):
     return IntentRouter(governance, fake_llm, router_model="cheap-model")
 
 
-def test_explicit_agent_name_wins(agents, governance, fake_llm):
+def test_explicit_agent_name_wins_when_in_scope(agents, governance, fake_llm):
+    fake_llm.classify_result = {"in_scope": True}  # scope-guard xác nhận in-scope
     router = _setup(agents, governance, fake_llm)
-    d = router.route("user1", "câu gì cũng được", agent_name="ThamDinhHopDong")
+    d = router.route("user1", "thẩm định giúp tôi hợp đồng thuê nhà", agent_name="ThamDinhHopDong")
     assert (d.agent_name, d.routed_by) == ("ThamDinhHopDong", "explicit")
-    assert fake_llm.classify_calls == []  # không tốn call MaaS
+
+
+def test_explicit_short_message_skips_scope_guard(agents, governance, fake_llm):
+    """Tin nhắn ngắn (chào/cảm ơn) <12 ký tự → không chạy scope-guard, không tốn call."""
+    router = _setup(agents, governance, fake_llm)
+    d = router.route("user1", "chào em", agent_name="ThamDinhHopDong")
+    assert (d.agent_name, d.routed_by) == ("ThamDinhHopDong", "explicit")
+    assert fake_llm.classify_calls == []
+
+
+def test_scope_guard_escalates_when_off_scope(agents, governance, fake_llm):
+    """B: sticky tới agent con, câu off-scope (in_scope=false) → escalate Master (deterministic)."""
+    fake_llm.classify_result = {"in_scope": False}
+    router = _setup(agents, governance, fake_llm)
+    d = router.route("user1", "cho tôi công thức nấu phở bò truyền thống", agent_name="ThamDinhHopDong")
+    assert (d.agent_name, d.routed_by) == ("master", "escalate")
+    assert d.note and "ThamDinhHopDong" in d.note
+
+
+def test_scope_guard_disabled_when_escalate_off(agents, governance, fake_llm):
+    """Agent broad (escalate_enabled=False) → KHÔNG scope-guard, tự do trả lời, không tốn call."""
+    fake_llm.classify_result = {"in_scope": False}  # dù model bảo off-scope
+    agents.create(make_agent(name="BroadBot", status=ItemStatus.public, created_by="x", escalate_enabled=False))
+    router = IntentRouter(governance, fake_llm, router_model="cheap-model")
+    d = router.route("user1", "câu gì hỏi cũng được nhé bạn ơi", agent_name="BroadBot")
+    assert (d.agent_name, d.routed_by) == ("BroadBot", "explicit")
+    assert fake_llm.classify_calls == []
 
 
 def test_explicit_master_allowed(agents, governance, fake_llm):
