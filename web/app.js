@@ -1921,7 +1921,8 @@ window.qcNext = function (from) {
     const name = $("#qc-name").value.trim();
     const purpose = $("#qc-purpose").value.trim();
     if (!name) { $("#qc-name").focus(); return alert("Vui lòng nhập tên agent."); }
-    if (!/^[A-Z][A-Za-z0-9]+$/.test(name)) return alert("Tên phải dạng PascalCase, không dấu, không khoảng trắng.\nvd: ThamDinhHopDong");
+    // Khớp AGENT_NAME_RE backend: 2-64 ký tự Unicode (có dấu) + khoảng trắng, không thừa ở đầu/cuối.
+    if (!/^[\p{L}\p{M}\p{N}_ ]{2,64}$/u.test(name)) return alert("Tên agent: 2–64 ký tự, có thể có dấu và khoảng trắng (vd: Bé Pháp). Không dùng ký tự đặc biệt.");
     if (!purpose) { $("#qc-purpose").focus(); return alert("Vui lòng mô tả mục đích agent."); }
     qc.name = name;
     qc.domain = $("#qc-domain").value;
