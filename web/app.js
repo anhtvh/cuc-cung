@@ -1094,6 +1094,17 @@ $("#chat-form").addEventListener("submit", async (e) => {
   let assistantText = "";
   let lastStopReason = null; // SLA: bắt "sla_deadline"/"timeout" để chú thích cho user
 
+  // BUG-FIX: gắn stream vào hội thoại của nó. Nếu user click sang hội thoại khác giữa chừng,
+  // stream KHÔNG được render vào #messages (đang hiển thị hội thoại khác) hay đổi global state.
+  // _streamKey cập nhật theo meta (auto-route). _detached: latch — đã rời 1 lần thì im luôn.
+  let _streamKey = _preSendKey;
+  let _detached = false;
+  const _live = () => {
+    if (_detached) return false;
+    if (currentConvKey() !== _streamKey) { _detached = true; return false; }
+    return true;
+  };
+
   try {
     const resp = await fetch("/chat", {
       method: "POST",
@@ -1126,11 +1137,8 @@ $("#chat-form").addEventListener("submit", async (e) => {
         const data = JSON.parse(dataMatch[1]);
 
         if (ev === "meta") {
-          const _prevKey = state.stickyAgent || "__auto__";
-          state.stickyAgent = data.agent_name;
-          setCurrentAgent(data.agent_name);
-
-          // Migrate convStore: nếu đang ở __auto__ và được route sang agent → chuyển entry
+          // Migrate convStore theo route (dùng _streamKey — danh tính hội thoại của stream này).
+          const _prevKey = _streamKey;
           if (_prevKey !== data.agent_name) {
             if (state.convStore.has(_prevKey) && !state.convStore.has(data.agent_name)) {
               const _e = state.convStore.get(_prevKey);
@@ -1141,27 +1149,33 @@ $("#chat-form").addEventListener("submit", async (e) => {
               state.convStore.set(data.agent_name, { key: data.agent_name, agentName: data.agent_name, agentMeta: null, lastText: "", updatedAt: Date.now(), title: null, titleSent: true });
             }
           }
+          _streamKey = data.agent_name;  // stream giờ thuộc hội thoại agent này
           const _metaEntry = state.convStore.get(data.agent_name);
           if (_metaEntry) {
             _metaEntry.updatedAt = Date.now();
             const _aData = _agentsCache.find((a) => a.name === data.agent_name);
             if (_aData) _metaEntry.agentMeta = { domain: _aData.domain };
           }
-          renderSidebar();
-
-          // Handoff card khi agent thay đổi — chỉ chào 1 lần/agent/session
-          if (data.agent_name !== _lastRoutedAgent && data.routed_by !== "explicit" && !_seenHandoffAgents.has(data.agent_name)) {
-            _seenHandoffAgents.add(data.agent_name);
-            addHandoff(data.agent_name, data.agent_description || "");
+          // Chỉ đổi global state (stickyAgent/header) khi user CÒN đang xem hội thoại này.
+          if (_live()) {
+            state.stickyAgent = data.agent_name;
+            setCurrentAgent(data.agent_name);
+            // Handoff card khi agent thay đổi — chỉ chào 1 lần/agent/session
+            if (data.agent_name !== _lastRoutedAgent && data.routed_by !== "explicit" && !_seenHandoffAgents.has(data.agent_name)) {
+              _seenHandoffAgents.add(data.agent_name);
+              addHandoff(data.agent_name, data.agent_description || "");
+            }
+            _lastRoutedAgent = data.agent_name;
           }
-          _lastRoutedAgent = data.agent_name;
+          renderSidebar();
 
         } else if (ev === "tool_start") {
           // Tool sắp/đang chạy (vd websearch, fetch ~10-15s) — hiện loading để user
           // biết agent đang xử lý, tránh cảm giác "agent đã trả lời xong nhưng treo".
-          showTyping();
+          if (_live()) showTyping();
 
         } else if (ev === "delta") {
+          if (!_live()) { assistantText += data.text; continue; }  // rời hội thoại → không render
           hideTyping();
           if (!assistantDiv) {
             const tag = state.stickyAgent === "master" ? "Cục cưng" : "@" + state.stickyAgent;
@@ -1172,6 +1186,7 @@ $("#chat-form").addEventListener("submit", async (e) => {
           scrollBottom();
 
         } else if (ev === "tool") {
+          if (!_live()) continue;  // rời hội thoại → không render tool vào view khác
           hideTyping();
           if (data.name === "run_agent") {
             // Orchestration: render sub-agent card ngay trong messages (không gom vào accordion)
@@ -1204,6 +1219,8 @@ $("#chat-form").addEventListener("submit", async (e) => {
           showTyping();
 
         } else if (ev === "delegate") {
+          // Rời hội thoại → bỏ qua auto-delegate (không hijack hội thoại đang xem).
+          if (!_live()) { break; }
           const isEscalation = state.stickyAgent && state.stickyAgent !== "master";
           _pendingDelegate = { agent_name: data.agent_name, message: data.message, isEscalation };
           break; // dừng đọc stream — agent mới sẽ tiếp tục
@@ -1212,10 +1229,18 @@ $("#chat-form").addEventListener("submit", async (e) => {
           lastStopReason = data.stop_reason || null;
 
         } else if (ev === "error") {
-          hideTyping();
-          addMsg("error", data.message);
+          if (_live()) { hideTyping(); addMsg("error", data.message); }
         }
       }
+    }
+    // Stream đã chạy trong nền (user đã rời sang hội thoại khác): KHÔNG render vào view hiện tại.
+    // Backend vẫn lưu hội thoại → đánh dấu cache cũ để khi quay lại sẽ fetch /history (đầy đủ).
+    if (_detached) {
+      refreshAgentsCache();
+      const _e = state.convStore.get(_streamKey);
+      if (_e) { _e.container = null; _e.lastText = assistantText.slice(0, 60) || _e.lastText; _e.updatedAt = Date.now(); }
+      renderSidebar();
+      return;
     }
     hideTyping();
     builderTracker.finish();
@@ -2365,7 +2390,7 @@ window.openAgentEditModal = function(agent) {
   $("#ae-description").value = agent.description || "";
   $("#ae-prompt").value = agent.system_prompt || "";
   $("#ae-domain").value = agent.domain || "";
-  $("#ae-visibility").value = agent.visibility || "private";
+  // Bỏ sửa visibility trong form (đi qua flow chia sẻ riêng) — field đã gỡ khỏi modal.
   $("#ae-error").textContent = "";
   $("#agent-edit-modal").hidden = false;
 };
@@ -2381,7 +2406,7 @@ window.saveAgentEdit = async function() {
     description: $("#ae-description").value.trim() || null,
     system_prompt: $("#ae-prompt").value.trim() || null,
     domain: $("#ae-domain").value || null,
-    visibility: $("#ae-visibility").value || null,
+    // visibility KHÔNG gửi từ form sửa — quản lý qua flow chia sẻ (submit/hạ riêng tư).
   };
   const errEl = $("#ae-error");
   errEl.textContent = "";

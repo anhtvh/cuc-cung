@@ -101,7 +101,7 @@
     const tw = Math.random() < (isStar ? 0.72 : 0.45);
     return {
       tier: isStar ? 1 : 2,
-      x, y, pvx: 0, pvy: 0, mvx: 0, mvy: 0,
+      x, y, hx: x, hy: y, pvx: 0, pvy: 0, mvx: 0, mvy: 0, // hx/hy = "nhà" để lò xo kéo về (fix khoảng trống)
       dang: Math.random() * Math.PI * 2,
       dsp: isStar ? 0.04 + Math.random() * 0.10 : 0.03 + Math.random() * 0.08, // trôi rất nhẹ
       drift: (Math.random() < 0.5 ? 1 : -1) * (0.0005 + Math.random() * 0.0012),
@@ -242,6 +242,10 @@
 
       // tương tác con trỏ + shockwave chỉ cho sao/dot (tier !== 0)
       if (p.tier !== 0) {
+        // Lò xo kéo về "nhà" — tỉ lệ độ lệch: bị đẩy xa (chuột) thì kéo về lấp khoảng trống;
+        // trôi nhẹ thường ngày thì lực này không đáng kể (độ lệch nhỏ). Fix void sau khi chuột rời.
+        ax += (p.hx - p.x) * 0.0016;
+        ay += (p.hy - p.y) * 0.0016;
         if (pointer.active) {
           const dx = p.x - pointer.x, dy = p.y - pointer.y;
           const d2 = dx * dx + dy * dy;
