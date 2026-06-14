@@ -525,6 +525,16 @@ async function _triggerAgentAutoStart(agentName, slug) {
   let assistantText = "";
   const triggerMsg = `@${slug}`;
 
+  // Stream isolation (giống handler chat chính): auto-start gắn cứng vào hội thoại agentName.
+  // User tạo/chuyển hội thoại khác giữa lúc chào → KHÔNG render vào view mới (tránh bleed).
+  const _streamKey = agentName;
+  let _detached = false;
+  const _live = () => {
+    if (_detached) return false;
+    if (currentConvKey() !== _streamKey) { _detached = true; return false; }
+    return true;
+  };
+
   try {
     const resp = await fetch("/chat", {
       method: "POST",
@@ -552,6 +562,7 @@ async function _triggerAgentAutoStart(agentName, slug) {
         const data = JSON.parse(dataMatch[1]);
 
         if (ev === "delta") {
+          if (!_live()) { assistantText += data.text; continue; }  // rời hội thoại → không render
           hideTyping();
           if (!assistantDiv) {
             const tag = "@" + agentName;
@@ -561,6 +572,7 @@ async function _triggerAgentAutoStart(agentName, slug) {
           assistantDiv.querySelector(".msg-content").innerHTML = renderMarkdown(assistantText);
           scrollBottom();
         } else if (ev === "tool") {
+          if (!_live()) continue;
           hideTyping();
           if (!assistantDiv) {
             const tag = "@" + agentName;
@@ -575,16 +587,26 @@ async function _triggerAgentAutoStart(agentName, slug) {
           showTyping();
         } else if (ev === "tool_start") {
           // Tool đang chạy (vd websearch ~10s) — hiện loading để user biết đang xử lý.
-          showTyping();
+          if (_live()) showTyping();
+        } else if (ev === "done") {
+          // Lượt xong → ẩn typing ngay (backend còn ghi memory trước khi đóng stream).
+          if (_live()) { hideTyping(); finalizeTurnProcess(assistantDiv); }
         } else if (ev === "delegate") {
+          if (!_live()) { break; }
           // Agent con auto-start escalate → chuyển về Master (luôn là escalation ở đây).
           _pendingDelegate = { agent_name: data.agent_name, message: data.message, isEscalation: true };
           break; // dừng đọc frame — server đã return sau delegate, stream sẽ đóng
         } else if (ev === "error") {
-          hideTyping();
-          addMsg("error", data.message);
+          if (_live()) { hideTyping(); addMsg("error", data.message); }
         }
       }
+    }
+    // Rời hội thoại giữa chừng → KHÔNG render vào view hiện tại; đánh dấu cache cũ để fetch /history.
+    if (_detached) {
+      const _e = state.convStore.get(_streamKey);
+      if (_e) { _e.container = null; _e.lastText = assistantText.slice(0, 60) || _e.lastText; _e.updatedAt = Date.now(); }
+      renderSidebar();
+      return;
     }
     hideTyping();
     finalizeTurnProcess(assistantDiv);
