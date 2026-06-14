@@ -7,6 +7,7 @@ const state = {
   user: null,         // { role, email, name, picture } | null (guest)
   stickyAgent: null,  // agent đang route của cuộc hiện tại (gửi làm agent_name)
   activeConvId: null, // thread key của cuộc hiện tại (uuid); null = chưa có cuộc (welcome)
+  ragEnabled: false,  // module RAG bật? (từ /auth/me) — quyết định hiện mục Tài liệu
   attachment: null,
   // Map<conversationId, {key, agentName, agentMeta, container, lastText, updatedAt, title, titleSent}>
   convStore: new Map(),
@@ -41,6 +42,7 @@ function headers(extra = {}) {
 async function loadAuthState() {
   try {
     const me = await fetch("/auth/me").then((r) => r.json());
+    state.ragEnabled = !!me.rag_enabled;  // bật/tắt mục tài liệu (RAG) trong UI
     if (me.role === "guest") {
       state.user = null;
       state.userId = "guest";
@@ -2434,11 +2436,72 @@ window.openAgentEditModal = function(agent) {
   $("#ae-domain").value = agent.domain || "";
   // Bỏ sửa visibility trong form (đi qua flow chia sẻ riêng) — field đã gỡ khỏi modal.
   $("#ae-error").textContent = "";
+  // Tài liệu kiến thức (RAG) — chỉ hiện khi module bật.
+  const kb = $("#ae-knowledge");
+  if (state.ragEnabled) {
+    kb.style.display = "";
+    $("#ae-doc-status").textContent = "";
+    _wireDocUpload(agent.name);
+    loadAgentDocs(agent.name);
+  } else {
+    kb.style.display = "none";
+  }
   $("#agent-edit-modal").hidden = false;
 };
 
 window.closeAgentEditModal = function() {
   $("#agent-edit-modal").hidden = true;
+};
+
+async function loadAgentDocs(agentName) {
+  const list = $("#ae-doc-list");
+  list.innerHTML = '<span style="font-size:12px;color:var(--tx3)">Đang tải…</span>';
+  try {
+    const r = await fetch(`/agents/${encodeURIComponent(agentName)}/docs`, { headers: headers() });
+    if (!r.ok) { list.innerHTML = ""; return; }
+    const { docs } = await r.json();
+    if (!docs.length) { list.innerHTML = '<span style="font-size:12px;color:var(--tx3)">Chưa có tài liệu nào.</span>'; return; }
+    list.innerHTML = docs.map((d) => `
+      <div style="display:flex;align-items:center;gap:8px;font-size:13px">
+        <span>📄</span>
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.filename)}</span>
+        <span style="color:var(--tx3);font-size:11px">${d.chunk_count} đoạn</span>
+        <button class="btn-sm btn-sm-danger" onclick="deleteAgentDoc('${esc(agentName)}',${d.id})">✕</button>
+      </div>`).join("");
+  } catch (_) { list.innerHTML = ""; }
+}
+
+let _docUploadAgent = null;
+function _wireDocUpload(agentName) {
+  _docUploadAgent = agentName;
+  const input = $("#ae-doc-file");
+  input.value = "";
+  input.onchange = async () => {
+    const file = input.files[0];
+    if (!file) return;
+    const status = $("#ae-doc-status");
+    status.textContent = "Đang xử lý tài liệu…";
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const r = await fetch(`/agents/${encodeURIComponent(_docUploadAgent)}/docs`, { method: "POST", headers: headers(), body: fd });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { status.textContent = "Lỗi: " + (d.detail || r.status); return; }
+      status.textContent = `Đã thêm (${d.chunk_count} đoạn) ✓`;
+      loadAgentDocs(_docUploadAgent);
+    } catch (e) {
+      status.textContent = "Lỗi tải lên: " + e.message;
+    }
+    input.value = "";
+  };
+}
+
+window.deleteAgentDoc = async function(agentName, docId) {
+  if (!(await showConfirm("Xoá tài liệu này khỏi kiến thức của agent?", { okText: "Xoá" }))) return;
+  try {
+    await fetch(`/agents/${encodeURIComponent(agentName)}/docs/${docId}`, { method: "DELETE", headers: headers() });
+  } catch (_) {}
+  loadAgentDocs(agentName);
 };
 
 window.saveAgentEdit = async function() {

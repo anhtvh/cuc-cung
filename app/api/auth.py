@@ -129,8 +129,9 @@ def logout():
 @router.get("/me")
 def me(request: Request, c: Container = Depends(get_container)):
     user = request.state.user
+    rag = c.settings.rag_active  # UI ẩn/hiện mục upload tài liệu theo cờ này
     if isinstance(user, GuestUser):
-        return {"role": "guest", "guest_mode": c.settings.guest_mode}
+        return {"role": "guest", "guest_mode": c.settings.guest_mode, "rag_enabled": rag}
     return {
         "role": user.role,
         "id": user.id,
@@ -138,4 +139,5 @@ def me(request: Request, c: Container = Depends(get_container)):
         "name": user.name,
         "picture": user.picture,
         "guest_mode": c.settings.guest_mode,
+        "rag_enabled": rag,
     }

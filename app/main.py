@@ -15,6 +15,7 @@ from app.api import agents as agents_api
 from app.api import chat as chat_api
 from app.api import feedback as feedback_api
 from app.api import history as history_api
+from app.api import knowledge as knowledge_api
 from app.api import mcp as mcp_api
 from app.api import review as review_api
 from app.api import skills as skills_api
@@ -250,6 +251,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(upload_api.router)
     app.include_router(history_api.router)
     app.include_router(feedback_api.router)
+    app.include_router(knowledge_api.router)
     app.include_router(mcp_api.router)
 
     @app.get("/healthz")
