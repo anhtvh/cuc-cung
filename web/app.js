@@ -1354,11 +1354,11 @@ async function uploadOneFile(file) {
   try {
     const resp = await fetch("/upload", { method: "POST", headers: headers(), body: fd });
     removePlaceholderChip(placeholderId);
-    if (!resp.ok) { alert((await resp.json().catch(() => ({}))).detail || `Lỗi upload ${resp.status}`); return; }
+    if (!resp.ok) { showToast((await resp.json().catch(() => ({}))).detail || `Lỗi upload ${resp.status}`, true); return; }
     addAttachment(await resp.json());
   } catch (err) {
     removePlaceholderChip(placeholderId);
-    alert(`Upload thất bại: ${err.message}`);
+    showToast(`Upload thất bại: ${err.message}`, true);
   }
 }
 
@@ -1469,12 +1469,20 @@ function myAgentCard(a) {
     </div>`;
 }
 
+// C1: hiển thị người tạo agent (lan toả/social proof). Email → phần trước @, "admin" → "Admin".
+function makerName(email) {
+  if (!email) return "";
+  if (email === "admin") return "Admin";
+  return email.split("@")[0];
+}
+
 function mpCard(a) {
   const icon = domainIcon[a.domain] || "🤖";
   const domainLabel = { legal:"Pháp lý", finance:"Tài chính", sales:"Sales", hr:"Nhân sự", ops:"Vận hành", it:"IT" }[a.domain] || (a.domain || "");
   const tagline = a.tagline || a.description.split(/[.。]/)[0].slice(0, 90);
   const callsBit = a.calls >= 5 ? `🔥 ${a.calls} lượt` : a.calls > 0 ? `${a.calls} lượt` : "";
-  const meta = [domainLabel, callsBit].filter(Boolean).join(" · ");
+  const makerBit = a.created_by ? `tạo bởi ${makerName(a.created_by)}` : "";
+  const meta = [domainLabel, makerBit, callsBit].filter(Boolean).join(" · ");
   const safeTag = esc(tagline);
   const safeName = esc(a.name);
   const jsTag = escJs(tagline);
@@ -1496,15 +1504,16 @@ async function loadCatalog() {
     const q = ($("#catalog-search")?.value || "").toLowerCase();
     const domain = _mpActiveDomain;
 
-    // "Agent của tôi" — draft/pending/rejected của current user
-    const mine = agents.filter((a) => a.created_by === state.userId && a.status !== "public");
-    const mySection = $("#my-agents-section");
-    if (mine.length) {
-      $("#my-agent-list").innerHTML = mine.map(myAgentCard).join("");
-      mySection.hidden = false;
-    } else {
-      mySection.hidden = true;
-    }
+    // K2: "Agent của tôi" đã chuyển hẳn sang tab "Của tôi" (#panel-myagents / loadMyAgents).
+    // Không render lại trong Catalog nữa để tránh trùng lặp 2 nơi.
+    // const mine = agents.filter((a) => a.created_by === state.userId && a.status !== "public");
+    // const mySection = $("#my-agents-section");
+    // if (mine.length) {
+    //   $("#my-agent-list").innerHTML = mine.map(myAgentCard).join("");
+    //   mySection.hidden = false;
+    // } else {
+    //   mySection.hidden = true;
+    // }
 
     const match = (a) => (!domain || a.domain === domain) && (!q || (a.name + " " + (a.tagline || "") + " " + a.description).toLowerCase().includes(q));
     const publicAgents = agents.filter((a) => a.status === "public").filter(match);
@@ -1598,6 +1607,27 @@ function showToast(msg, isError = false) {
   }, 2800);
 }
 
+// I1: confirm-modal nhất quán thay window.confirm() — trả Promise<bool>.
+function showConfirm(message, { okText = "Xác nhận", danger = false } = {}) {
+  return new Promise((resolve) => {
+    const ov = $("#confirm-modal");
+    $("#confirm-msg").textContent = message;
+    const okBtn = $("#confirm-ok");
+    const cancelBtn = $("#confirm-cancel");
+    okBtn.textContent = okText;
+    okBtn.className = danger ? "btn-cta btn-danger" : "btn-cta";
+    ov.hidden = false;
+    const done = (val) => {
+      ov.hidden = true;
+      okBtn.onclick = cancelBtn.onclick = ov.onclick = null;
+      resolve(val);
+    };
+    okBtn.onclick = () => done(true);
+    cancelBtn.onclick = () => done(false);
+    ov.onclick = (e) => { if (e.target === ov) done(false); };
+  });
+}
+
 function reviewActions(kind, name) {
   return `<div class="review-actions">
     <button class="btn-approve" onclick="decide('${kind}','${name}','approve',this)">Approve</button>
@@ -1672,7 +1702,7 @@ window.submitAgentForReview = async function (name, btn) {
     });
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
-      alert(err.detail || `Lỗi ${resp.status}`);
+      showToast(err.detail || `Lỗi ${resp.status}`, true);
       if (btn) { btn.disabled = false; btn.textContent = "🚀 Submit để chia sẻ"; }
       return;
     }
@@ -1692,7 +1722,7 @@ window.submitAgentForReview = async function (name, btn) {
     await refreshAgentsCache();
     if ($("#panel-catalog").classList.contains("active")) loadCatalog();
   } catch (err) {
-    alert(`Không gửi được: ${err.message}`);
+    showToast(`Không gửi được: ${err.message}`, true);
     if (btn) { btn.disabled = false; btn.textContent = "🚀 Submit để chia sẻ"; }
   }
 };
@@ -1920,10 +1950,10 @@ window.qcNext = function (from) {
   if (from === 1) {
     const name = $("#qc-name").value.trim();
     const purpose = $("#qc-purpose").value.trim();
-    if (!name) { $("#qc-name").focus(); return alert("Vui lòng nhập tên agent."); }
+    if (!name) { $("#qc-name").focus(); showToast("Vui lòng nhập tên agent.", true); return; }
     // Khớp AGENT_NAME_RE backend: 2-64 ký tự Unicode (có dấu) + khoảng trắng, không thừa ở đầu/cuối.
-    if (!/^[\p{L}\p{M}\p{N}_ ]{2,64}$/u.test(name)) return alert("Tên agent: 2–64 ký tự, có thể có dấu và khoảng trắng (vd: Bé Pháp). Không dùng ký tự đặc biệt.");
-    if (!purpose) { $("#qc-purpose").focus(); return alert("Vui lòng mô tả mục đích agent."); }
+    if (!/^[\p{L}\p{M}\p{N}_ ]{2,64}$/u.test(name)) { showToast("Tên agent: 2–64 ký tự, có thể có dấu và khoảng trắng (vd: Bé Pháp). Không dùng ký tự đặc biệt.", true); return; }
+    if (!purpose) { $("#qc-purpose").focus(); showToast("Vui lòng mô tả mục đích agent.", true); return; }
     qc.name = name;
     qc.domain = $("#qc-domain").value;
     qc.purpose = purpose;
@@ -2002,7 +2032,8 @@ $("#qc-file").addEventListener("change", async (e) => {
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
       qcSetUploadIdle();
-      return alert(err.detail || "Upload thất bại");
+      showToast(err.detail || "Upload thất bại", true);
+      return;
     }
     const data = await resp.json();
     if (data.content_type === "text") {
@@ -2012,11 +2043,11 @@ $("#qc-file").addEventListener("change", async (e) => {
       $("#qc-content").value = "";
     } else {
       qcSetUploadIdle();
-      alert("Ảnh không hỗ trợ trong wizard — dùng .pdf .docx .txt");
+      showToast("Ảnh không hỗ trợ trong wizard — dùng .pdf .docx .txt", true);
     }
   } catch (err) {
     qcSetUploadIdle();
-    alert("Upload thất bại: " + err.message);
+    showToast("Upload thất bại: " + err.message, true);
   }
 });
 
@@ -2044,13 +2075,13 @@ window.executeQuickCreate = async function () {
     ? `\n\n**Quy trình/tài liệu chuẩn** (chưng cất thành skill mới):\n${qc.skillContent}`
     : "";
 
-  const msg = `Tạo agent mới với thông tin đầy đủ sau, không cần hỏi thêm:
+  const msg = `Tôi muốn tạo agent với thông tin dưới đây (đã đủ, KHÔNG cần phỏng vấn thêm 5 câu):
 
 **Tên:** ${qc.name}
 **Domain:** ${qc.domain}
 **Mục đích:** ${qc.purpose}${skillSection}
 
-Hãy thực hiện ngay: (1) kiểm tra trùng lặp, (2) tạo skill từ quy trình nếu có, (3) tạo agent, (4) gắn skill, (5) báo tôi kết quả.`;
+Hãy: (1) kiểm tra trùng lặp trước, (2) nếu có quy trình thì chưng cất thành skill, (3) soạn nhanh bản nháp persona + skill cho tôi xem và xác nhận, (4) sau khi tôi đồng ý thì tạo agent + gắn skill + báo kết quả.`;
 
   closeQuickCreate();
   btn.disabled = false;
@@ -2207,6 +2238,17 @@ async function loadMyAgents() {
       const canSubmit = st === "private";
       const canRetract = st === "pending_review";
       const canResubmit = st === "rejected";
+      // C1 (lan toả): dòng trạng thái chia sẻ rõ ràng theo vòng đời private→pending→public.
+      let shareNote = "";
+      if (st === "public") {
+        shareNote = a.visibility === "company"
+          ? `✅ Cả công ty đang dùng${a.calls ? ` · ${a.calls} lượt` : ""}`
+          : "🙈 Đang ẩn khỏi công ty (chỉ mình bạn dùng)";  // public + private = tạm ẩn (I4)
+      } else if (st === "pending_review") {
+        shareNote = "⏳ Chờ duyệt — duyệt xong cả công ty dùng được";
+      } else if (st === "private") {
+        shareNote = "🔒 Riêng bạn — bấm “Gửi duyệt” để chia sẻ cả công ty";
+      }
       // JSON safe cho data attribute: esc() đổi " → &quot; để không vỡ attribute
       const safeAgent = esc(JSON.stringify(a));
       return `<div class="mp-card">
@@ -2216,6 +2258,7 @@ async function loadMyAgents() {
         </div>
         <div class="mp-name">${esc(a.name)}</div>
         <div class="mp-desc">${esc(a.tagline || a.description.slice(0, 80))}</div>
+        ${shareNote ? `<div class="mp-share-note">${shareNote}</div>` : ""}
         ${a.review_note ? `<div class="mp-review-note">💬 ${esc(a.review_note)}</div>` : ""}
         <div class="mp-actions">
           ${canEdit ? `<button class="btn-sm" data-agent="${safeAgent}" onclick="openAgentEditModal(JSON.parse(this.dataset.agent))">Sửa</button>` : ""}
@@ -2236,25 +2279,28 @@ window.submitMyAgent = async function(name) {
   try {
     const r = await fetch(`/agents/${encodeURIComponent(name)}/submit`, { method: "POST", headers: headers() });
     const d = await r.json();
-    if (!r.ok) { alert(d.detail || "Lỗi submit"); return; }
+    if (!r.ok) { showToast(d.detail || "Lỗi gửi duyệt", true); return; }
+    showToast("Đã gửi duyệt! Admin duyệt xong là cả công ty dùng được 🎉");  // C1: nhấn "lan toả"
     loadMyAgents();
-  } catch (e) { alert("Lỗi kết nối"); }
+    refreshAgentsCache();
+  } catch (e) { showToast("Lỗi kết nối", true); }
 };
 
 window.deleteMyAgent = async function(name) {
-  if (!confirm(`Xóa agent "${name}"? Hành động này không thể hoàn tác.`)) return;
+  if (!(await showConfirm(`Xóa agent "${name}"? Hành động này không thể hoàn tác.`, { okText: "Xóa", danger: true }))) return;
   const r = await fetch(`/agents/${encodeURIComponent(name)}`, { method: "DELETE", headers: headers() });
   const d = await r.json();
-  if (!r.ok) { alert(d.detail || "Lỗi xóa"); return; }
+  if (!r.ok) { showToast(d.detail || "Lỗi xóa", true); return; }
+  showToast(`Đã xóa agent "${name}"`);
   loadMyAgents();
   refreshAgentsCache();
 };
 
 window.retractMyAgent = async function(name) {
-  if (!confirm(`Hủy nộp duyệt agent "${name}"?\nAgent sẽ về trạng thái Nháp, bạn có thể sửa và gửi lại.`)) return;
+  if (!(await showConfirm(`Hủy nộp duyệt agent "${name}"?\nAgent sẽ về trạng thái Nháp, bạn có thể sửa và gửi lại.`, { okText: "Hủy nộp duyệt" }))) return;
   const r = await fetch(`/agents/${encodeURIComponent(name)}/retract`, { method: "POST", headers: headers() });
   const d = await r.json();
-  if (!r.ok) { alert(d.detail || "Lỗi hủy nộp duyệt"); return; }
+  if (!r.ok) { showToast(d.detail || "Lỗi hủy nộp duyệt", true); return; }
   loadMyAgents();
   refreshAgentsCache();
 };

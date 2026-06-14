@@ -1921,3 +1921,25 @@ main { flex: 1; overflow: hidden; display: flex; min-height: 0; }
   color: #f87171 !important;
   border-color: rgba(248,113,113,.3) !important;
 }
+
+/* C1: dòng trạng thái "lan toả" trên card "Của tôi" */
+.mp-share-note {
+  font-size: 12px;
+  color: var(--tx2, #94a3b8);
+  margin: 4px 0 2px;
+}
+
+/* I1: nút xác nhận nguy hiểm trong confirm-modal */
+.btn-danger {
+  background: #ef4444 !important;
+  color: #fff !important;
+  border-color: #ef4444 !important;
+}
+
+/* R1: header không vừa mobile → tràn ngang. Cho nav co lại + cuộn ngang, ẩn brand-sub. */
+@media (max-width: 600px) {
+  header { gap: 10px; padding: 0 12px; }
+  .brand-sub { display: none; }
+  nav { min-width: 0; overflow-x: auto; }
+  nav::-webkit-scrollbar { display: none; }
+}

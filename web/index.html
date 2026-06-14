@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cục cưng — AI agent platform</title>
-  <link rel="stylesheet" href="style.css?v=20260614c">
+  <link rel="stylesheet" href="style.css?v=20260614e">
 </head>
 <body>
 
@@ -146,10 +146,13 @@
         <button class="mp-cat" data-domain="ops">⚙️ Vận hành</button>
         <button class="mp-cat" data-domain="it">💻 IT</button>
       </div>
+      <!-- K2: bỏ "Agent của tôi" khỏi Catalog — quản lý đã có ở tab "Của tôi" (#panel-myagents),
+           tránh trùng lặp 2 nơi với 2 code path khác nhau.
       <div id="my-agents-section" hidden>
         <div class="section-head">Agent của tôi</div>
         <div id="my-agent-list" class="cards-grid"></div>
       </div>
+      -->
       <div id="mp-featured" hidden>
         <div class="section-head">🔥 Phổ biến</div>
         <div id="mp-featured-list" class="mp-grid"></div>
@@ -293,7 +296,7 @@
 
     <!-- Step 3 -->
     <div class="step-panel" id="qc-step-3">
-      <p class="step-desc">Kiểm tra lại thông tin — Cục cưng sẽ tạo agent và bạn có thể xem tiến trình trong Chat.</p>
+      <p class="step-desc">Kiểm tra lại thông tin — Cục cưng sẽ kiểm tra trùng lặp và soạn nhanh bản nháp để bạn <strong>xác nhận trong Chat</strong> trước khi tạo.</p>
       <div class="qc-preview">
         <div class="preview-row">
           <span class="preview-label">Agent</span>
@@ -400,6 +403,19 @@
   </div>
 </div>
 
-<script src="app.js?v=20260614d"></script>
+<!-- ─── Confirm Modal (I1: thay window.confirm) ─────────── -->
+<div id="confirm-modal" class="modal-overlay" hidden>
+  <div class="modal-box" style="max-width:380px">
+    <div style="padding:24px 26px 22px">
+      <p id="confirm-msg" style="margin:0 0 18px;white-space:pre-line;line-height:1.5"></p>
+      <div class="modal-footer">
+        <button class="btn-ghost" id="confirm-cancel">Hủy</button>
+        <button class="btn-cta" id="confirm-ok">Xác nhận</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js?v=20260614e"></script>
 </body>
 </html>
