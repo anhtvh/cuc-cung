@@ -108,8 +108,8 @@ def make_page(browser, server):
     """
     contexts = []
 
-    def _make(role=None):
-        ctx = browser.new_context(base_url=server)
+    def _make(role=None, viewport=None):
+        ctx = browser.new_context(base_url=server, viewport=viewport) if viewport else browser.new_context(base_url=server)
         if role:
             email, name = _ROLE[role]
             ctx.add_cookies([{"name": "session", "value": _mint(email, name, role), "url": server}])

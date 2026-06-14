@@ -57,18 +57,15 @@ def test_quickcreate_accepts_unicode_name(make_page):
     page.goto("/web/", wait_until="networkidle")
     expect(page.locator("#myagents-tab")).to_be_visible()  # auth init xong
 
-    dialogs = []
-    page.on("dialog", lambda d: (dialogs.append(d.message), d.dismiss()))
-
     page.evaluate("openQuickCreate()")
     expect(page.locator("#qc-modal")).to_be_visible()
     page.fill("#qc-name", "Bé Kế Toán")
     page.fill("#qc-purpose", "Hỗ trợ nghiệp vụ kế toán cơ bản cho phòng tài chính")
     page.locator("#qc-step-1").get_by_role("button", name=re.compile("Tiếp theo")).click()
 
-    # Sang được step 2, không có alert chặn tên
+    # Sang được step 2, không có toast lỗi chặn tên
     expect(page.locator("#qc-step-2")).to_have_class(re.compile(r"\bactive\b"))
-    assert not dialogs, f"Tên hợp lệ nhưng bị chặn: {dialogs}"
+    expect(page.locator(".review-toast-error")).to_have_count(0)
 
 
 def test_quickcreate_rejects_empty_name(make_page):
@@ -76,16 +73,27 @@ def test_quickcreate_rejects_empty_name(make_page):
     page.goto("/web/", wait_until="networkidle")
     expect(page.locator("#myagents-tab")).to_be_visible()
 
-    dialogs = []
-    page.on("dialog", lambda d: (dialogs.append(d.message), d.dismiss()))
-
     page.evaluate("openQuickCreate()")
     page.fill("#qc-name", "")
     page.fill("#qc-purpose", "abc")
     page.locator("#qc-step-1").get_by_role("button", name=re.compile("Tiếp theo")).click()
 
     expect(page.locator("#qc-step-1")).to_have_class(re.compile(r"\bactive\b"))  # vẫn ở step 1
-    assert any("nhập tên" in m.lower() for m in dialogs), f"Không cảnh báo tên trống: {dialogs}"
+    expect(page.locator(".review-toast-error")).to_contain_text("nhập tên")     # toast cảnh báo
+
+
+# ── R1: responsive mobile — các phần tử chính vẫn dùng được ở 390px ─────
+def test_mobile_viewport_core_usable(make_page):
+    page = make_page("user", viewport={"width": 390, "height": 844})
+    page.goto("/web/", wait_until="networkidle")
+    # Nav + hero hiển thị, không vỡ; chuyển sang Chat được
+    expect(page.locator('[data-tab="chat"]')).to_be_visible()
+    expect(page.locator(".home-hero h1")).to_be_visible()
+    page.locator('[data-tab="chat"]').click()
+    expect(page.locator("#chat-input")).to_be_visible()
+    # Không tràn ngang (body width không vượt viewport)
+    scroll_w = page.evaluate("document.documentElement.scrollWidth")
+    assert scroll_w <= 400, f"Tràn ngang trên mobile: scrollWidth={scroll_w}"
 
 
 # ── Guest bị chặn tạo agent → mời đăng nhập ─────────────────────────────
