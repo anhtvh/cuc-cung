@@ -42,6 +42,34 @@ _TIMEOUT_FALLBACK = (
     "dữ liệu đã có; bạn có thể hỏi lại để mình bổ sung phần còn thiếu nhé.)_"
 )
 
+# P2-2: SLA 2 tầng. Tool mạng CHẬM (web-search/fetch) là thủ phạm latency chính → khi chạm
+# SLA (soft) gỡ trước, NHƯNG giữ tool nhanh (knowledge_search/system/escalate) để model vẫn
+# tổng hợp/bám dữ liệu nội bộ thay vì bị buộc trả lời tay không (dễ bịa). Quá 1.5× SLA (hard)
+# mới cắt sạch tool + ép dừng — chốt chặn cứng chống treo.
+_SLA_HARD_FACTOR = 1.5
+_SLOW_TOOL_PREFIXES = ("web-search",)  # khớp wire-name "web-search__search" / "web-search__fetch"
+
+
+def _is_slow_tool(name: str) -> bool:
+    return any(name.startswith(p) for p in _SLOW_TOOL_PREFIXES)
+
+
+def _round_tools_for_elapsed(api_tools, effective_sla, elapsed):
+    """Chọn bộ tool cho 1 vòng theo SLA (P2-2). Trả (round_tools, hard_deadline).
+
+    - chưa quá SLA → đủ tool.
+    - quá SLA (soft) → gỡ tool mạng chậm, giữ tool nhanh (None nếu không còn tool nhanh nào).
+    - quá _SLA_HARD_FACTOR × SLA (hard) → None (cắt sạch); hard_deadline=True → caller break.
+    """
+    if effective_sla is None:
+        return api_tools, False
+    if elapsed > effective_sla * _SLA_HARD_FACTOR:
+        return None, True
+    if elapsed > effective_sla:
+        fast = [t for t in api_tools if not _is_slow_tool(t["name"])]
+        return (fast or None), False
+    return api_tools, False
+
 
 class AnthropicMaaSClient:
     def __init__(
@@ -124,9 +152,9 @@ class AnthropicMaaSClient:
         start = time.monotonic()
 
         for _round in range(max_rounds):
-            # Quá SLA → vòng này KHÔNG cấp tool nữa, model buộc trả lời trên data đã có.
-            over_sla = effective_sla is not None and (time.monotonic() - start) > effective_sla
-            round_tools = None if over_sla else api_tools
+            # P2-2: SLA 2 tầng — soft gỡ tool chậm (giữ tool nhanh để vẫn tổng hợp), hard cắt sạch.
+            elapsed = time.monotonic() - start
+            round_tools, hard_sla = _round_tools_for_elapsed(api_tools, effective_sla, elapsed)
 
             stream_kwargs: dict[str, Any] = {
                 "model": model or self._default_model,
@@ -180,8 +208,10 @@ class AnthropicMaaSClient:
             log.info("LLM round %d stop_reason=%s content_types=%s", _round, stop_reason,
                      [b.type for b in final.content])
 
-            # Đã ép trả lời do quá SLA (vòng không tool) → kết thúc với stop_reason riêng.
-            if over_sla:
+            # Hard deadline (quá 1.5× SLA): vòng này đã chạy không-tool → ép dừng ngay.
+            # Soft deadline KHÔNG break: model còn tool nhanh để hội tụ, vòng sau vẫn bị SLA chặn
+            # (và đã nhận nudge tổng hợp) — tránh cắt grounding quá sớm khiến bịa.
+            if hard_sla:
                 stop_reason = "sla_deadline"
                 break
 
