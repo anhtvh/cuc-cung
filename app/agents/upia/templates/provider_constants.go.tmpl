@@ -1,0 +1,60 @@
+// Template: internal/constant/provider.go
+// Replace ALL placeholders with actual values from input/partner_schema.json.
+// Do not copy this file directly — derive every constant from schema.error_codes.
+
+package constant
+
+// {PartnerName} HTTP/API status codes — one constant per schema.error_codes entry.
+// Naming: ProviderCode{PascalCaseName} = "{code_value_as_string}"
+const (
+	ProviderCodeSuccess = "{success_code_from_schema}"
+
+	// Add remaining codes below. Example:
+	// ProviderCodeNotFound    = "404"
+	// ProviderCodeBillGone    = "499"
+	// ProviderCodeServerError = "500"
+	//
+	// If partner uses string status values (e.g. TrangThai), add them too:
+	// ProviderTrangThaiSuccess = "THANH_CONG"
+	// ProviderTrangThaiFail    = "KHONG_THANH_CONG"
+)
+
+// MapQueryStatusCode maps {partner_name} query response codes to zalopay internal codes.
+// Called by common/service.go after GetBill and CheckPay.
+// RULES:
+//   - Every code in schema.error_codes must have an explicit case — no omissions.
+//   - Default MUST be ProviderErrorCodeNotDefined (never DeliverManualCheck here).
+func MapQueryStatusCode(code string) int {
+	switch code {
+	case ProviderCodeSuccess:
+		return ProviderSuccess
+	// case ProviderCodeNotFound:
+	//     return ProviderCustomerCodeNotExist
+	// case ProviderCodeBillGone:
+	//     return ProviderBillEmpty
+	// case ProviderCodeServerError, ProviderCodeUnavailable:
+	//     return ProviderUnavailable
+	default:
+		return ProviderErrorCodeNotDefined
+	}
+}
+
+// MapPaymentStatusCode maps {partner_name} payment codes to zalopay delivery codes.
+// Called by common/service.go after PayBill.
+// RULES:
+//   - DeliverFail (-401): only when partner GUARANTEES no charge was made — auto-refund is safe.
+//   - DeliverManualCheck (-400): any uncertain outcome — hold for reconciliation.
+//   - Default MUST be DeliverManualCheck — never auto-refund an unknown code.
+//
+// Signature note: add serviceID string as second parameter ONLY if mapping differs per service type.
+func MapPaymentStatusCode(code string) int {
+	switch code {
+	case ProviderCodeSuccess:
+		return DeliverSuccess
+	// Auto-refund codes (partner confirmed no side-effects):
+	// case ProviderCodeXxx, ProviderCodeYyy:
+	//     return DeliverFail
+	default:
+		return DeliverManualCheck
+	}
+}

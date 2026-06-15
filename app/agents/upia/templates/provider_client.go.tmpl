@@ -1,0 +1,153 @@
+// Template: internal/provider/client.go
+// Replace all {placeholders}. Auth block is chosen by schema.auth.type.
+// DO NOT copy the unused auth blocks — delete the ones that don't apply.
+
+package provider
+
+//go:generate mockgen -destination=mocks/client.go -package=mocks -source=client.go
+
+import (
+	"context"
+	"fmt"
+
+	"{module}/internal/constant"
+	providerEntity "{module}/internal/entity/provider"
+	"{module}/internal/httpclient"
+	"{module}/internal/metrics"
+	"{module}/internal/tracing"
+
+	// oauth2 only:
+	// "sync"
+	// "time"
+
+	// rsa only:
+	// utils "{module}/internal/provider/utils"
+)
+
+// API endpoint paths from schema.endpoints[*].path
+const (
+	endpointGetBill  = "{schema.endpoints[GetBill].path}"
+	endpointPayBill  = "{schema.endpoints[PayBill].path}"
+	endpointCheckPay = "{schema.endpoints[CheckPay].path}"
+	// oauth2 only:
+	// endpointToken = "{schema.auth.oauth2.token_url}"
+)
+
+// Config holds connection and auth configuration.
+// Credentials come from config.yaml only — never hardcoded.
+type Config struct {
+	Endpoint      string `mapstructure:"endpoint"`
+	SkipVerifySSL bool   `mapstructure:"skip_verify_ssl"`
+
+	// basic auth:
+	// Username string `mapstructure:"username"`
+	// Password string `mapstructure:"password"`
+
+	// apikey:
+	// APIKey       string `mapstructure:"api_key"`
+	// APIKeyHeader string `mapstructure:"api_key_header"`
+
+	// hmac:
+	// SecretKey string `mapstructure:"secret_key"`
+
+	// rsa:
+	// PrivateKeyPath string `mapstructure:"private_key_path"`
+	// PublicKeyPath  string `mapstructure:"public_key_path"`
+
+	// oauth2:
+	// RefreshToken string `mapstructure:"refresh_token"`
+	// {other partner-specific oauth2 fields}
+}
+
+// Provider is the interface for all {partner_name} API operations.
+// Add CheckBalance ONLY if schema has a CheckBalance endpoint.
+type Provider interface {
+	GetBill(ctx context.Context, req *providerEntity.GetBillDataRequest) (*providerEntity.GetBillDataResponse, error)
+	PayBill(ctx context.Context, req *providerEntity.PayBillDataRequest) (*providerEntity.PayBillDataResponse, error)
+	CheckPay(ctx context.Context, req *providerEntity.CheckPayDataRequest) (*providerEntity.CheckPayDataResponse, error)
+}
+
+type provider struct {
+	conn      httpclient.IHttpClient
+	cfg       *Config
+	collector metrics.Egress
+
+	// oauth2 token cache — protected by mu:
+	// accessToken string
+	// tokenExpiry time.Time
+	// mu          sync.Mutex
+
+	// rsa:
+	// rsaUtils utils.RSAUtils
+}
+
+func NewProvider(cfg *Config, conn httpclient.IHttpClient, collector metrics.Egress) Provider {
+	p := &provider{cfg: cfg, conn: conn, collector: collector}
+	// rsa: p.rsaUtils = utils.NewRSAUtils(cfg.PrivateKeyPath, cfg.PublicKeyPath)
+	return p
+}
+
+// ── oauth2: token cache ───────────────────────────────────────────────────────
+// Include this block ONLY if schema.auth.type == "oauth2".
+//
+// func (p *provider) getAccessToken(ctx context.Context) (string, error) {
+//     p.mu.Lock()
+//     defer p.mu.Unlock()
+//     earlyRefresh := {schema.auth.oauth2.early_refresh_margin_hours} * time.Hour
+//     if p.accessToken != "" && time.Now().Before(p.tokenExpiry.Add(-earlyRefresh)) {
+//         return p.accessToken, nil
+//     }
+//     req := &RefreshTokenRequest{RefreshToken: p.cfg.RefreshToken}
+//     var resp RefreshTokenResponse
+//     if err := p.callAPI(ctx, endpointToken, req, &resp); err != nil {
+//         return "", fmt.Errorf("refresh token: %w", err)
+//     }
+//     ttl := time.Duration({schema.auth.oauth2.access_token_ttl_hours}) * time.Hour
+//     p.accessToken = resp.AccessToken
+//     p.tokenExpiry = time.Now().Add(ttl)
+//     return p.accessToken, nil
+// }
+
+// ── Method template ───────────────────────────────────────────────────────────
+// Follow this pattern for GetBill, PayBill, CheckPay.
+// Observability rules (mandatory — see zalopay-provider-pattern.md "Observability Standards"):
+//   - Span attributes: http.url, http.status_code, partner.return_code, partner.return_message (truncated), return_code
+//   - Egress metrics labels: partner, endpoint, http_status, provider_code, return_code
+//   - provider.return_message: log + span attribute only — NEVER a Prometheus label
+//   - Trace context propagated automatically via p.conn (httpclient injects W3C TraceContext headers)
+
+// func (p *provider) GetBill(ctx context.Context, req *providerEntity.GetBillDataRequest) (*providerEntity.GetBillDataResponse, error) {
+//     spanCtx := tracing.StartSpan(ctx, "provider.client.get_bill")
+//     tracing.SetAttribute(spanCtx, "http.url", endpointGetBill)
+//
+//     var (
+//         httpStatus   string
+//         providerCode string
+//         returnCode   int
+//     )
+//     defer func(start time.Time) {
+//         p.collector.Observe(metrics.EgressLabels{
+//             Partner:      "{partner_name}",
+//             Endpoint:     "get_bill",
+//             HTTPStatus:   httpStatus,
+//             ProviderCode: providerCode,
+//             ReturnCode:   returnCode,
+//         }, time.Since(start))
+//         tracing.SetAttribute(spanCtx, "http.status_code", httpStatus)
+//         tracing.SetAttribute(spanCtx, "partner.return_code", providerCode)
+//         tracing.SetAttribute(spanCtx, "return_code", returnCode)
+//         tracing.EndSpan(spanCtx)
+//     }(time.Now())
+//
+//     // 1. Build auth (oauth2: token := getAccessToken; rsa: sign; hmac: sign; apikey: header)
+//     // 2. Build request DTO from req fields
+//     // 3. Call p.conn.Post(spanCtx, url, requestDTO, &responseDTO)
+//     //    httpStatus = strconv.Itoa(httpResp.StatusCode)
+//     // 4. providerCode = responseDTO.BaseResponse.StatusCode
+//     //    providerMsg  = utils.Truncate(responseDTO.BaseResponse.Description, 100)
+//     //    logging.FromContext(spanCtx).WithField("provider_message", providerMsg).Warn("provider get_bill response")
+//     //    tracing.SetAttribute(spanCtx, "partner.return_message", providerMsg)
+//     // 5. resp.FinalStatus = providerCode
+//     //    returnCode = constant.MapQueryStatusCode(providerCode)
+//     // 6. Return parsed entity response
+// }

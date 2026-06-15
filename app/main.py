@@ -12,6 +12,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api import agents as agents_api
+from app.api import artifacts as artifacts_api
 from app.api import chat as chat_api
 from app.api import feedback as feedback_api
 from app.api import history as history_api
@@ -211,6 +212,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         builder_sla_seconds=settings.builder_sla_seconds,
         builder_max_tool_rounds=settings.builder_max_tool_rounds,  # P1-2: trần riêng cho Flow 2
         knowledge=knowledge,
+        upia_experimental_mode=settings.upia_experimental_mode,  # Flow 5: Upia đóng gói ZIP
     )
 
     # HM3: self-test sandbox (judge dùng model rẻ qua router_llm)
@@ -255,6 +257,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(feedback_api.router)
     app.include_router(knowledge_api.router)
     app.include_router(mcp_api.router)
+    app.include_router(artifacts_api.router)
 
     @app.get("/healthz")
     @app.get("/health")  # AgentBase runtime contract yêu cầu /health

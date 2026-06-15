@@ -1,0 +1,76 @@
+// Template: internal/provider/dto.go
+// HTTP-level envelope types — the raw JSON structures sent to / received from
+// the partner's HTTP API. These are distinct from entity/provider types.
+// Populate field names and json tags from schema.endpoints[*] exactly.
+
+package provider
+
+import providerEntity "gitlab.zalopay.vn/{namespace}/provider-{partner_name}/internal/entity/provider"
+
+// BaseResponse is the common response envelope every {partner_name} endpoint returns.
+// StatusCode field name must match the partner's actual JSON key.
+type BaseResponse struct {
+	StatusCode  string `json:"{status_code_field}"`
+	Description string `json:"{description_field},omitempty"`
+	// Add signature/hash field here if partner signs responses
+}
+
+// ── GetBill ───────────────────────────────────────────────────────────────────
+
+type GetBillRequest struct {
+	// For basic/hmac/rsa auth: embed providerEntity.BaseDataRequest
+	// providerEntity.BaseDataRequest
+	// Partner-specific query fields from schema.endpoints[GetBill].request_fields:
+	// CustomerCode string `json:"{field}"`
+	// ServiceCode  string `json:"{field},omitempty"`
+}
+
+type GetBillResponse struct {
+	BaseResponse
+	// Inline data fields OR a nested data object:
+	// Data providerEntity.GetBillDataResponse `json:"{data_field}"`
+	// OR flatten directly:
+	// KhachHang providerEntity.KhachHang `json:"{customer_field}"`
+	// HoaDon    []providerEntity.HoaDon  `json:"{bill_array_field}"`
+}
+
+// ── PayBill ───────────────────────────────────────────────────────────────────
+
+type PayBillRequest struct {
+	// providerEntity.BaseDataRequest (if applicable)
+	// Partner-specific payment fields from schema.endpoints[PayBill].request_fields
+}
+
+type PayBillResponse struct {
+	BaseResponse
+	// Partner transaction reference fields:
+	// IDGiaoDich string `json:"{trans_id_field},omitempty"`
+	// NgayGio    string `json:"{timestamp_field},omitempty"`
+}
+
+// ── CheckPay ──────────────────────────────────────────────────────────────────
+
+type CheckPayRequest struct {
+	// providerEntity.BaseDataRequest (if applicable)
+	// Fields from schema.endpoints[CheckPay].request_fields
+}
+
+type CheckPayResponse struct {
+	BaseResponse
+	// Status / TrangThai field:
+	// TrangThai  string `json:"{status_field},omitempty"`
+	// IDGiaoDich string `json:"{trans_id_field},omitempty"`
+}
+
+// ── Token refresh (oauth2 only) ───────────────────────────────────────────────
+// Include this block ONLY if schema.auth.type == "oauth2".
+
+// type RefreshTokenRequest struct {
+//     RefreshToken string `json:"{schema.auth.oauth2.refresh_token_field}"`
+// }
+//
+// type RefreshTokenResponse struct {
+//     BaseResponse
+//     AccessToken string `json:"{schema.auth.oauth2.access_token_field}"`
+//     ExpiresIn   int    `json:"expires_in,omitempty"`
+// }

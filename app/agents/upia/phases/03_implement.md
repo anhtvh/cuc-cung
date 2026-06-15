@@ -175,7 +175,7 @@ There is nothing to "modify" — only new files to write.
 
 **Source of truth for every file you write:**
 1. **Interface signatures and constants** → `agent/context/zalopay-provider-pattern.md`
-2. **File-by-file struct patterns** → `agent/templates/` (see steps below)
+2. **File-by-file struct patterns** → tool `read_template` (see steps below)
 3. **Partner-specific values** → `input/partner_schema.json`
 4. **Coding style** → Go coding standards in `zalopay-provider-pattern.md` ("About the template project" section)
 
@@ -215,7 +215,7 @@ internal/
 
 ## Step 3: Generate `internal/constant/provider.go`
 
-→ **Read template:** `agent/templates/provider_constants.go.tmpl`
+→ **Read template:** gọi tool `read_template` với `name="provider-constants"`
 
 Key rules:
 - One constant per code in `schema.error_codes` — no omissions.
@@ -227,7 +227,7 @@ Key rules:
 
 ## Step 4: Generate `internal/entity/provider/provider.go`
 
-→ **Read template:** `agent/templates/entity_provider.go.tmpl`
+→ **Read template:** gọi tool `read_template` với `name="entity-provider"`
 
 Key rules:
 - Omit `BaseDataRequest` entirely if `schema.auth.type` is `oauth2` or `apikey`.
@@ -240,7 +240,7 @@ Key rules:
 
 ## Step 5: Generate `internal/provider/dto.go`
 
-→ **Read template:** `agent/templates/provider_dto.go.tmpl`
+→ **Read template:** gọi tool `read_template` với `name="provider-dto"`
 
 Include `RefreshTokenRequest` / `RefreshTokenResponse` only if `schema.auth.type == "oauth2"`.
 
@@ -248,7 +248,7 @@ Include `RefreshTokenRequest` / `RefreshTokenResponse` only if `schema.auth.type
 
 ## Step 6: Generate `internal/provider/client.go`
 
-→ **Read template:** `agent/templates/provider_client.go.tmpl`
+→ **Read template:** gọi tool `read_template` với `name="provider-client"`
 
 For each method, follow the observability pattern exactly (see `zalopay-provider-pattern.md` → "Observability Standards"):
 
@@ -308,7 +308,7 @@ go build ./... 2>&1 | grep -E "^#|error:" | head -20
 
 ## Step 7: Generate `internal/business/manager/{type}/service.go`
 
-→ **Read template:** `agent/templates/converter_service.go.tmpl`
+→ **Read template:** gọi tool `read_template` với `name="converter-service"`
 
 One file per service type. If only one service type, create `internal/business/manager/{type}/` with the converter there.
 

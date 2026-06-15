@@ -1,0 +1,76 @@
+// Template: internal/business/manager/{type}/service.go
+// Replace {type} with the Go package name (e.g. electricity, water, internet).
+// Every field assignment in ConvertBillEntity must be traceable to
+// schema.endpoints[GetBill].response_fields — do not invent mappings.
+
+package {type}
+
+import (
+	"fmt"
+
+	"gitlab.zalopay.vn/{namespace}/provider-{partner_name}/internal/business/manager"
+	"gitlab.zalopay.vn/{namespace}/provider-{partner_name}/internal/constant"
+	baseEntity "gitlab.zalopay.vn/{namespace}/provider-{partner_name}/internal/entity/base"
+	providerEntity "gitlab.zalopay.vn/{namespace}/provider-{partner_name}/internal/entity/provider"
+)
+
+type service struct{}
+
+// NewService returns a ConverterStrategy for the {type} service type.
+// Remove Config parameter if there are no per-service config options.
+func NewService() manager.ConverterStrategy {
+	return &service{}
+}
+
+// GetPaymentRule returns the payment ordering rule for this service.
+// Derive from partner docs:
+//   "phải thanh toán theo thứ tự cũ đến mới" → PaymentRuleContiguousBills
+//   "bất kỳ hoá đơn nào"                      → PaymentRuleAll
+//   "nhập số tiền tuỳ ý"                       → PaymentRuleInputAmount
+//   "chỉ hoá đơn cũ nhất"                      → PaymentRuleOldestBill
+func (s *service) GetPaymentRule() string {
+	return constant.PaymentRuleAll // REPLACE with correct value from docs
+}
+
+// GetContractType returns the contract type label for the given service ID.
+// Return constant.TypeDebt for standard bill debt.
+// Return "" if this service has no meaningful contract type distinction.
+func (s *service) GetContractType(srvID string) string {
+	return constant.TypeDebt // REPLACE if needed
+}
+
+// ConvertBillEntity converts a provider GetBillDataResponse to a slice of base Bill entities.
+// One Bill is created per entry in providerResp.{BillArrayField}.
+// Use baseEntity.ExtInfo to store metadata needed later by PayBill (customercode, referencecode, serviceid).
+func (s *service) ConvertBillEntity(
+	serviceID string,
+	providerID string,
+	providerResp *providerEntity.GetBillDataResponse,
+) []baseEntity.Bill {
+	var bills []baseEntity.Bill
+
+	for _, item := range providerResp.HoaDon { // REPLACE .HoaDon with actual field name
+		ext := &baseEntity.ExtInfo{
+			CustomerCode:  providerResp.BillingCode,
+			CustomerName:  providerResp.CustomerName,
+			ReferenceCode: fmt.Sprintf("%d", item.MaHoaDon), // REPLACE with actual ID field
+			ServiceCode:   item.LoaiHD,                      // REPLACE with actual type field
+			TotalDebt:     int64(item.SoTien),                // REPLACE with actual amount field
+		}
+
+		bill := baseEntity.Bill{
+			BillID:       fmt.Sprintf("%s_%s_%d_%02d%02d", providerResp.BillingCode, item.LoaiHD, item.MaHoaDon, item.Thang, item.Nam),
+			ServiceID:    serviceID,
+			CustomerID:   providerResp.BillingCode,
+			CustomerCode: providerResp.BillingCode,
+			CustomerName: providerResp.CustomerName,
+			TotalAmount:  int64(item.SoTien),
+			Month:        fmt.Sprintf("%02d", item.Thang), // REPLACE with actual month field
+			Year:         fmt.Sprintf("%d", item.Nam),     // REPLACE with actual year field
+		}
+		bill.SetExtInfo(ext)
+		bills = append(bills, bill)
+	}
+
+	return bills
+}

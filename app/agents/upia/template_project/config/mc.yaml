@@ -1,0 +1,24 @@
+app:
+  env: "merchant"
+  addr: ":8080"
+  client_map:
+    1: "abc123"
+
+proxy:
+  addr: "{{aqr.bill.provider-template.proxy}}"
+
+provider:
+  endpoint: ""
+  secretKey: ""
+  userName: ""
+  password: ""
+  skipVerifySSL: false
+  minAmount: 12000
+  partnerCode: ""
+  recvAcct: ""
+  productCode: ""
+  providerID: ""
+
+
+tracing:
+  addr: "{{aqr.bill.provider-template.tracing.address}}"

@@ -1,0 +1,30 @@
+app:
+  env: "production"
+  addr: ":8080"
+  client_map:
+    1: "abc123"
+
+proxy:
+  addr: {{aqr.bill.provider.proxy.host_port}}
+
+provider:
+  endpoint: ""
+  account1:
+    username: ""
+    password: ""
+  account2:
+    username: ""
+    password: ""
+  skip_verify_ssl: false
+  min_amount: 1000
+  private_key: ""
+  public_key: ""
+
+tracing:
+  addr: {{aqr.bill.tracing.http}}
+
+cache:
+  redis_addr: {{private-cicd.zalopay.redis.host}}:{{private-cicd.zalopay.redis.port}}
+  redis_pass: ""
+  pool_size: 100
+  cache_prefix: "production.aqr.bill.provider-template"

@@ -81,6 +81,13 @@ class Settings(BaseSettings):
     # Tool rounds tối đa mỗi sub-agent trong orchestration
     orchestration_sub_rounds: int = 3
 
+    # --- Upia (Flow 5: tích hợp đối tác bill payment) ---
+    # Chế độ thử nghiệm: agent chạy tới hết Phase 3 (sinh code), đóng gói project thành ZIP
+    # gửi user kèm disclaimer, và BỎ QUA các bước mock (vet/build/test, create_mr, merge_mr,
+    # deploy_sandbox, query_bill_sandbox) — tránh trình diễn kết quả giả. Tắt (mặc định) → flow 4
+    # phase chạy như cũ. Bật bằng env UPIA_EXPERIMENTAL_MODE=true.
+    upia_experimental_mode: bool = False
+
     # --- Self-test (HM3/HM4) ---
     # Tắt khi demo live để tiết kiệm credit: SELF_TEST_ENABLED=false
     self_test_enabled: bool = True

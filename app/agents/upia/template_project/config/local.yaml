@@ -1,0 +1,20 @@
+app:
+  env: "local"
+  addr: ":8080"
+  clientMap:
+    1: "abc123"
+
+proxy:
+  addr: ""
+
+provider:
+  endpoint: ""
+  username: ""
+  password: ""
+  skip_verify_ssl: false
+  min_amount: 12000
+  private_key: ""
+  public_key: ""
+
+tracing:
+  addr: ""

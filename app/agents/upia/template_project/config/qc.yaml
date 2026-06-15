@@ -1,0 +1,20 @@
+app:
+  env: "qc"
+  addr: ":8080"
+  client_map:
+    1: "abc123"
+
+proxy:
+  addr: "{{aqr.bill.provider.proxy.host_port}}"
+
+provider:
+  endpoint: ""
+  username: ""
+  password: ""
+  skip_verify_ssl: false
+  min_amount: 10000
+  private_key: ""
+  public_key: ""
+
+tracing:
+  addr: ""

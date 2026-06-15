@@ -2,6 +2,10 @@
 
 **Goal:** Build the adapter, run tests, generate a test report, push everything, and open a GitLab MR.
 
+> **Chế độ thử nghiệm:** Nếu experimental mode đang bật (xem chỉ thị hệ thống), **BỎ QUA phase này** —
+> không gọi `go_build`/`go_test`/`go_vet`, không tạo MR/deploy. Thay vào đó: tạo `docs/qc-test-cases.md`
+> (qua `save_file`), rồi gọi `package_project(partner_name)` và bàn giao ZIP kèm disclaimer.
+
 ---
 
 ## Step 1: Read state

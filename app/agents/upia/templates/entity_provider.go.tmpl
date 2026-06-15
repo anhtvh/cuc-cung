@@ -1,0 +1,88 @@
+// Template: internal/entity/provider/provider.go
+// Populate field names and JSON tags from schema.endpoints[*].request_fields
+// and schema.endpoints[*].response_fields — do not invent fields.
+
+package provider
+
+// ── Auth structs ────────────────────────────────────────────────────────────
+//
+// Include BaseDataRequest ONLY if schema.auth.type is "basic", "hmac", or "rsa"
+// (i.e. auth credentials travel in the request body).
+// OMIT entirely for oauth2 and apikey — those use headers or a separate token call.
+
+// type BaseDataRequest struct {
+//     Username       string `json:"<username_field>"`
+//     Password       string `json:"<password_field>"`
+//     PartnerTransID string `json:"<trans_id_field>"`
+//     AuthKey        string `json:"<auth_key_field>,omitempty"` // RSA/HMAC signature
+// }
+
+// ── GetBill ──────────────────────────────────────────────────────────────────
+
+// GetBillDataRequest is passed to Provider.GetBill.
+// Fields: RequestID (internal trace ID) + partner-specific query params.
+type GetBillDataRequest struct {
+	RequestID    string
+	ServiceCode  string // filter by bill/service type (empty = all)
+	CustomerCode string // partner's customer identifier field
+}
+
+// GetBillDataResponse is returned by Provider.GetBill.
+// FinalStatus MUST be set by the provider implementation from the raw HTTP/API
+// status code so that MapQueryStatusCode can work correctly.
+// CustomerName and other PII fields: annotate with "// PII — do not log".
+type GetBillDataResponse struct {
+	FinalStatus  string // set by provider — input to MapQueryStatusCode
+	BillingCode  string // customer code echoed back
+	CustomerName string // PII — do not log
+	// ... fields from schema.endpoints[GetBill].response_fields
+	// Bills / HoaDon array:
+	// {BillArrayField} []{BillItemType} `json:"{array_json_key}"`
+}
+
+// {BillItemType} is one bill entry in the GetBill response.
+// Names: PascalCase Go; json tags: exact partner field names.
+type BillItem struct {
+	// ... one field per item in the bill array
+}
+
+// ── PayBill ───────────────────────────────────────────────────────────────────
+
+// PayBillDataRequest is passed to Provider.PayBill.
+type PayBillDataRequest struct {
+	RequestID     string // MaGiaoDich / trans_id — idempotency key
+	CustomerCode  string
+	ServiceCode   string // bill/service type
+	ReferenceCode string // bill ID from GetBill response
+	Amount        int64  // in VND (whole number, not xu)
+}
+
+// PayBillDataResponse is returned by Provider.PayBill.
+// FinalStatus and Message MUST be json:"-" (set by provider, not from JSON body).
+type PayBillDataResponse struct {
+	FinalStatus string `json:"-"` // set by provider from HTTP/API status code
+	Message     string `json:"-"` // set by provider from response message field
+	// transaction reference fields with json tags:
+	// IDGiaoDich string `json:"<provider_trans_id_field>,omitempty"`
+	// NgayGio    string `json:"<timestamp_field>,omitempty"`
+}
+
+// ── CheckPay ──────────────────────────────────────────────────────────────────
+
+// CheckPayDataRequest is passed to Provider.CheckPay.
+type CheckPayDataRequest struct {
+	RequestID     string
+	TransactionID string // MaGiaoDich from original PayBill call
+	// add any other fields required by schema.endpoints[CheckPay].request_fields
+}
+
+// CheckPayDataResponse is returned by Provider.CheckPay.
+// OriginalStatus MUST be set by provider = the raw TrangThai/status value.
+// It is the input to MapQueryStatusCode for delivery reconciliation.
+type CheckPayDataResponse struct {
+	OriginalStatus    string `json:"-"` // set by provider = raw status value
+	DescriptionStatus string `json:"-"` // set by provider = response message
+	// Fields serialized to ProviderData JSON (used by zalopay reconciliation):
+	// {StatusField}      string `json:"{json_key},omitempty"`
+	// {TransactionField} string `json:"{json_key},omitempty"`
+}

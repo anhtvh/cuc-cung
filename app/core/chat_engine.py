@@ -8,6 +8,7 @@ import logging
 import re
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Iterator
 
 from app.core.models import MASTER_AGENT_NAME, Agent, ChatMessage, ItemStatus
@@ -15,6 +16,16 @@ from app.llm.base import Done, TextDelta, ToolCallEvent, ToolDef, ToolExecutor, 
 from app.tools.base import to_display
 
 log = logging.getLogger(__name__)
+
+# Upia (Flow 5): tên agent khớp seeds/demo_data.py (_UPIA_AGENT_NAME) + file chỉ thị chế độ thử nghiệm.
+_UPIA_AGENT_NAME = "Upia"
+_UPIA_EXPERIMENTAL_MD = Path(__file__).resolve().parent.parent / "agents" / "upia" / "experimental_mode.md"
+# Tool workspace CHỈ lộ khi Upia ở chế độ thử nghiệm — ngoài ra gỡ khỏi tool-set (giữ flow gốc).
+_UPIA_WORKSPACE_TOOLS = {
+    "partner-integration__save_file",
+    "partner-integration__list_workspace",
+    "partner-integration__package_project",
+}
 
 # Guardrail ngôn ngữ (deterministic, không phụ thuộc model nghe lời prompt P2-B):
 # minimax thỉnh thoảng rò ký tự Trung vào câu tiếng Việt (vd "随时", "不客气"). Mọi agent ở đây
@@ -269,6 +280,7 @@ class ChatEngine:
         builder_sla_seconds: float | None = None,
         builder_max_tool_rounds: int | None = None,
         knowledge=None,
+        upia_experimental_mode: bool = False,
     ):
         self._agents = agents
         self._skills = skills
@@ -285,6 +297,8 @@ class ChatEngine:
         self._builder_max_tool_rounds = builder_max_tool_rounds or max_tool_rounds
         # KnowledgeService (RAG) — None khi module tắt. Agent có tài liệu → inject tool knowledge_search.
         self._knowledge = knowledge
+        # Flow 5: bật chế độ thử nghiệm cho Upia (đóng gói ZIP, bỏ bước mock). Xem stream().
+        self._upia_experimental_mode = upia_experimental_mode
 
     # L-04: giới hạn tổng system prompt ~30k chars ≈ 8k token để không bị model truncate
     _MAX_SYSTEM_CHARS = 30_000
@@ -430,6 +444,7 @@ class ChatEngine:
         has_kb: bool,
         extra_tools: list[ToolDef] | None = None,
         extra_executor: ToolExecutor | None = None,
+        expose_workspace_tools: bool = False,
     ) -> tuple[list[ToolDef], ToolExecutor]:
         """Lắp bộ tool + executor cho 1 lượt. DÙNG CHUNG cho stream() (runtime) và run_once()
         (sandbox self-test/eval) → hành vi agent KHỚP nhau (P2-1: trước đây run_once không inject
@@ -443,6 +458,10 @@ class ChatEngine:
         # trùng với ALWAYS_ON_SERVERS → Anthropic API từ chối duplicate tool name).
         connectors = list(dict.fromkeys([*ALWAYS_ON_SERVERS, *agent.connectors]))
         tools = self._catalog.tools_for(connectors)
+        # Flow 5: tool workspace của Upia chỉ lộ ở chế độ thử nghiệm — ngoài ra gỡ để không đổi
+        # hành vi flow gốc (parity cả runtime stream() lẫn sandbox run_once()).
+        if not expose_workspace_tools:
+            tools = [t for t in tools if t.name not in _UPIA_WORKSPACE_TOOLS]
         catalog_execute = self._catalog.execute
         if extra_tools:
             extra_names = {t.name for t in extra_tools}
@@ -582,6 +601,15 @@ class ChatEngine:
                 skill_names = ", ".join(agent_skills)
                 message = f"Bắt đầu ngay. Thực hiện đầy đủ tất cả skill: {skill_names}. Không hỏi tôi cần gì."
 
+        # Flow 5: Upia ở chế độ thử nghiệm → nối chỉ thị experimental_mode.md vào extra_system
+        # (chạy tới hết Phase 3 → package_project → disclaimer, bỏ bước mock build/test/MR/deploy).
+        if agent.name == _UPIA_AGENT_NAME and self._upia_experimental_mode:
+            try:
+                _note = _UPIA_EXPERIMENTAL_MD.read_text(encoding="utf-8")
+                extra_system = f"{extra_system}\n\n{_note}" if extra_system else _note
+            except OSError as e:  # thiếu file → log, vẫn chạy flow thường (không chết)
+                log.warning("không đọc được experimental_mode.md: %s", e)
+
         # RAG: agent có tài liệu? Tính 1 lần — dùng cho cả prompt suffix lẫn inject tool bên dưới.
         has_kb = self._knowledge is not None and self._knowledge.has_docs(agent.name)
         system = self.build_system_prompt(agent, user_id, message=message, auto_start=auto_start, extra_system=extra_system, salutation=salutation, is_guest=is_guest, knowledge_enabled=has_kb)
@@ -612,9 +640,22 @@ class ChatEngine:
 
         # Lắp tool + executor (escalate / request_update / knowledge_search / master builder) —
         # DÙNG CHUNG với run_once() qua _assemble_tools để sandbox self-test/eval khớp runtime (P2-1).
+        # Flow 5: Upia chế độ thử nghiệm → lộ tool workspace; ngoài ra gỡ (giữ flow gốc nguyên vẹn).
+        _upia_exp = agent.name == _UPIA_AGENT_NAME and self._upia_experimental_mode
         tools, execute = self._assemble_tools(
-            agent, message, has_kb, extra_tools=extra_tools, extra_executor=extra_executor
+            agent, message, has_kb, extra_tools=extra_tools, extra_executor=extra_executor,
+            expose_workspace_tools=_upia_exp,
         )
+
+        if _upia_exp:
+            # Plumb conversation_id vào tool workspace (provider stateless cần biết workspace nào).
+            # Inject server-side — LLM không cấp. conv_id là thread key của lượt (đã tính ở trên).
+            _inner_execute = execute
+
+            def execute(name: str, args: dict[str, Any], _inner=_inner_execute, _cid=conv_id):  # type: ignore[misc]
+                if name in _UPIA_WORKSPACE_TOOLS:
+                    args = {**args, "_conversation_id": _cid}
+                return _inner(name, args)
 
         assistant_text: list[str] = []
         # P1-4: tên agent đã delegate/escalate (nếu có) — dùng ở finally để lưu marker assistant,
