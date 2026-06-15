@@ -968,7 +968,8 @@ function showTyping() {
     setTimeout(() => setLabel("Đang phân tích…"), 3000),
     setTimeout(() => setLabel("Đang tra cứu dữ liệu…"), 10000),
     setTimeout(() => setLabel("Dữ liệu khá lớn, đang tổng hợp phần liên quan…"), 25000),
-    setTimeout(() => setLabel("Sắp xong, đang hoàn thiện câu trả lời…"), 45000),
+    setTimeout(() => setLabel("Tác vụ nhiều bước, vẫn đang xử lý…"), 45000),
+    setTimeout(() => setLabel("Vẫn đang chạy — tác vụ phức tạp có thể mất 1-2 phút…"), 90000),
   ];
 }
 function hideTyping() {

@@ -200,9 +200,12 @@ class AnthropicMaaSClient:
                 yield TextDelta(msg)
                 yield Done(input_tokens=total_in, output_tokens=total_out, stop_reason=f"api_error_{e.status_code}")
                 return
-            except APIConnectionError as e:
-                # Mạng đứt / DNS fail / TLS error → fallback an toàn.
-                log.warning("MaaS connection error (round %d): %s", _round, e)
+            except (APIConnectionError, httpx.TransportError) as e:
+                # Mạng đứt / DNS / TLS, HOẶC MaaS đóng kết nối giữa stream
+                # (httpx.RemoteProtocolError "peer closed connection… incomplete chunked read",
+                #  httpx.NetworkError) — hay gặp khi streaming qua proxy MaaS. SDK không bọc lại
+                # nên raw httpx lọt ra giữa text_stream → bắt ở đây để fallback, KHÔNG crash lượt.
+                log.warning("MaaS connection/stream error (round %d): %s", _round, e)
                 yield TextDelta(_TIMEOUT_FALLBACK)
                 yield Done(input_tokens=total_in, output_tokens=total_out, stop_reason="connection_error")
                 return
