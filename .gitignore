@@ -7,7 +7,9 @@
 data/
 *.db
 reviews/  # file markdown review do agent MrReviewer sinh ra (save_review)
-evals/results/  # báo cáo eval theo từng lần chạy (giữ lại cases.json + runner, bỏ output)
+# Báo cáo eval theo từng lần chạy (giữ lại cases.json + runner, bỏ output).
+# LƯU Ý: comment .gitignore PHẢI ở dòng riêng — inline "pattern  # ..." không match (git coi cả dòng là pattern).
+evals/results/
 
 # Python
 __pycache__/
