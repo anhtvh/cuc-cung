@@ -16,6 +16,24 @@ from app.tools.base import to_display
 
 log = logging.getLogger(__name__)
 
+# Guardrail ngôn ngữ (deterministic, không phụ thuộc model nghe lời prompt P2-B):
+# minimax thỉnh thoảng rò ký tự Trung vào câu tiếng Việt (vd "随时", "不客气"). Mọi agent ở đây
+# trả lời 100% tiếng Việt → ký tự CJK xuất hiện = chắc chắn rò → strip an toàn ở đường output.
+# Dải: CJK punctuation/space (　-〿), Ext-A (㐀-䶿), Hán phổ thông (一-鿿),
+# compat ideographs (豈-﫿). Emoji (\U0001F300+) và dấu tiếng Việt (Latin) KHÔNG bị đụng.
+_CJK_RE = re.compile(r"[　-〿㐀-䶿一-鿿豈-﫿]")
+
+
+def strip_cjk(text: str) -> tuple[str, int]:
+    """Bỏ ký tự CJK lạc vào text tiếng Việt. Trả (text_đã_sạch, số_ký_tự_bị_bỏ)."""
+    if not text:
+        return text, 0
+    removed = len(_CJK_RE.findall(text))
+    if not removed:
+        return text, 0
+    return _CJK_RE.sub("", text), removed
+
+
 # Server luôn được cấp cho mọi agent (Flow 5).
 # web-search: tìm kiếm thật (DuckDuckGo) — agent tự gọi khi không có trong knowledge base.
 ALWAYS_ON_SERVERS = ["system", "web-search"]
@@ -515,7 +533,8 @@ class ChatEngine:
             )
             for ev in events:
                 if isinstance(ev, TextDelta):
-                    text_parts.append(ev.text)
+                    # Strip CJK như runtime → eval/self-test thấy đúng text user sẽ nhận (P2-1 parity).
+                    text_parts.append(strip_cjk(ev.text)[0])
                 elif isinstance(ev, ToolCallEvent) and ev.result.delegate_to:
                     # Giống runtime: dừng ngay sau delegate, và ghi marker để judge thấy agent
                     # ĐÃ chuyển hướng đúng (quan trọng cho case ngoài-phạm-vi/cập-nhật).
@@ -601,6 +620,8 @@ class ChatEngine:
         # P1-4: tên agent đã delegate/escalate (nếu có) — dùng ở finally để lưu marker assistant,
         # giữ cặp user/assistant không vỡ alternation cho lượt sau (xem finally).
         delegate_target: str | None = None
+        # Guardrail ngôn ngữ: đếm ký tự CJK đã strip trong lượt (log ở finally để theo dõi model rò).
+        cjk_stripped = 0
         # I-05 observability: đo độ trễ lượt + đếm tool-call để ghi usage_log.
         turn_start = time.monotonic()
         tool_call_count = 0
@@ -633,8 +654,11 @@ class ChatEngine:
 
             for ev in events:
                 if isinstance(ev, TextDelta):
-                    assistant_text.append(ev.text)
-                    yield {"event": "delta", "data": {"text": ev.text}}
+                    # Strip ký tự CJK rò (deterministic) TRƯỚC khi gửi UI + lưu memory.
+                    clean, removed = strip_cjk(ev.text)
+                    cjk_stripped += removed
+                    assistant_text.append(clean)
+                    yield {"event": "delta", "data": {"text": clean}}
                 elif isinstance(ev, ToolStartEvent):
                     # Signal "tool đang chạy" — UI hiện loading trong lúc execute (websearch chậm).
                     yield {"event": "tool_start", "data": {"name": to_display(ev.name), "input": ev.input}}
@@ -681,6 +705,10 @@ class ChatEngine:
                         },
                     }
         finally:
+            # Guardrail ngôn ngữ: log nếu model rò ký tự CJK trong lượt (để theo dõi tần suất).
+            if cjk_stripped:
+                log.warning("đã strip %d ký tự CJK khỏi output (agent=%s) — model rò ngôn ngữ khác",
+                            cjk_stripped, agent.name)
             # Ghi memory kể cả khi stream đứt giữa chừng — giữ hội thoại nhất quán.
             full_text = "".join(assistant_text)
             # auto_start: 'message' là câu lệnh hệ thống tự sinh, KHÔNG phải lời user.
