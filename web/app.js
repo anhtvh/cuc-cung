@@ -2269,7 +2269,7 @@ $("#qc-file").addEventListener("change", async (e) => {
       $("#qc-content").value = "";
     } else {
       qcSetUploadIdle();
-      showToast("Ảnh không hỗ trợ trong wizard — dùng .pdf .docx .txt", true);
+      showToast("Ảnh không hỗ trợ trong wizard — dùng .pdf .docx .txt .csv .xlsx", true);
     }
   } catch (err) {
     qcSetUploadIdle();
@@ -2286,7 +2286,7 @@ function qcSetUploadIdle() {
   const label = $("#qc-upload-label");
   label.classList.remove("has-file");
   label.querySelector("#qc-upload-text").innerHTML =
-    '📎 Click để chọn file<br><span style="font-size:11px;color:var(--tx3)">.txt .md .pdf .docx — tối đa 5 MB</span>';
+    '📎 Click để chọn file<br><span style="font-size:11px;color:var(--tx3)">.txt .md .pdf .docx .csv .xlsx — tối đa 5 MB</span>';
   qc.skillContent = "";
   qc.skillFilename = null;
 }

@@ -16,6 +16,7 @@ dependencies = [
     "pypdf>=4.0",
     "beautifulsoup4>=4.12",
     "python-docx>=1.0",
+    "openpyxl>=3.1",  # đọc Excel .xlsx/.xlsm cho upload (trích text từ bảng)
     "python-multipart>=0.0.9",
     "ddgs>=9.0",
     "PyJWT>=2.8",
