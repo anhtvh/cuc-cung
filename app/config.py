@@ -47,7 +47,10 @@ class Settings(BaseSettings):
     # max_tool_rounds + timeout mỗi request vẫn là chốt chặn treo.
     builder_sla_seconds: int = 240
     # Timeout từng request HTTP tới MaaS — chặn 1 call treo vô hạn (an toàn cho SLA trên).
-    llm_request_timeout_seconds: int = 45
+    # 90s (cũ 45s): minimax là reasoning model, pha "thinking" có thể im lặng >45s khi sinh
+    # output lớn (vd Upia sinh partner_schema.json) → read-timeout cắt giữa stream. Nới để không
+    # đứt oan; streaming timeout giờ cũng được bắt graceful (xem anthropic_client).
+    llm_request_timeout_seconds: int = 90
     # Router classify là call ngắn, chạy TRƯỚC khi stream — timeout ngắn để fallback master nhanh.
     router_timeout_seconds: int = 15
     # I-06: giới hạn số call /chat per user trong 1 "session window" (0 = không giới hạn — contest default).

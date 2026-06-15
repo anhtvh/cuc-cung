@@ -8,6 +8,8 @@ import logging
 import time
 from typing import Any, Iterator
 
+import httpx
+
 from anthropic import Anthropic, APIConnectionError, APIStatusError, APITimeoutError
 
 from app.core.models import ChatMessage
@@ -177,8 +179,11 @@ class AnthropicMaaSClient:
                     for block in final.content:
                         if block.type == "text":
                             yield TextDelta(block.text)
-            except APITimeoutError:
+            except (APITimeoutError, httpx.TimeoutException):
                 # Request treo quá timeout → không để chết im lặng: trả lời an toàn rồi dừng.
+                # httpx.TimeoutException: streaming reasoning model (minimax) "thinking" im lặng
+                # vượt read-timeout → SDK KHÔNG bọc thành APITimeoutError mà raise raw httpx.ReadTimeout
+                # giữa vòng lặp text_stream → phải bắt ở đây, nếu không sẽ crash cả stream.
                 log.warning("MaaS request timeout sau %.1fs — trả lời fallback", time.monotonic() - start)
                 yield TextDelta(_TIMEOUT_FALLBACK)
                 yield Done(input_tokens=total_in, output_tokens=total_out, stop_reason="timeout")
