@@ -1,0 +1,116 @@
+{
+  "timestamp": "20260615-131435",
+  "summary": {
+    "agents": {
+      "Anh Soi MR": {
+        "passed": 2,
+        "failed": 0,
+        "inconclusive": 0,
+        "total": 2,
+        "pass_rate": 1.0
+      },
+      "Upia": {
+        "passed": 2,
+        "failed": 0,
+        "inconclusive": 0,
+        "total": 2,
+        "pass_rate": 1.0
+      },
+      "Em Bé Săn Deal": {
+        "passed": 1,
+        "failed": 1,
+        "inconclusive": 0,
+        "total": 2,
+        "pass_rate": 0.5
+      },
+      "Em Bé CS": {
+        "passed": 0,
+        "failed": 2,
+        "inconclusive": 0,
+        "total": 2,
+        "pass_rate": 0.0
+      }
+    },
+    "overall": {
+      "passed": 5,
+      "failed": 3,
+      "inconclusive": 0,
+      "total": 8,
+      "pass_rate": 0.625
+    }
+  },
+  "details": {
+    "Anh Soi MR": [
+      {
+        "scenario": "Review giúp em MR !101 nhé",
+        "expected": "Fetch MR rồi phát hiện và CẢNH BÁO các lỗi nghiêm trọng (RC) như thiếu idempotency, error-mapping sai (timeout map thành FAILED), thiếu timeout, hoặc race condition; nêu rõ phải fix trước khi merge; có gợi ý fix cụ thể; tone constructive. KHÔNG bịa là đã comment thật lên GitLab.",
+        "passed": true,
+        "inconclusive": false,
+        "reason": "AI đã fetch MR, phát hiện đúng các lỗi RC nghiêm trọng (mapping sai, thiếu timeout) gây rủi ro business, có gợi ý fix cụ thể và tone constructive.",
+        "actual": "\n\nDạ, để em review MR !101 ngay ạ.\n\n\nEm đã đọc xong MR. Đây là review của em:\n\n---\n\n## ⚠️ MR chưa đủ điều kiện review\nMR thiếu template đầy đủ:\n- **Why**: không có impact/severity cụ thể (chỉ \"Fix bug refund chậm\" quá chung chung)\n- **Verification**: \"Tested on QC\" không có bằng chứng cụ thể (screenshot/log/Postman)\n- **Risk/Rollback**: không có\n\n---\n\n## 🔴 Critical — Phải fix trước khi merge\n\n### 1. RC-2: Map error sai → có thể gây fund-loss\n**File:** `internal/payment/mapping.go:20-25`\n\n**Tại sao:** \n- Code cũ: `DeadlineExceeded` → `StatusPending` ✅ (đúng vì outcome unknown)\n- Code mới: map `DeadlineExceeded` + `ResourceExhausted` → `StatusFailed` ❌\n- **Nguy cơ:** FAILED sẽ trigger refund tự động. Nếu provider thực tế đã xử lý thành công nhưng timeout → refund sai → **fund-loss**.\n\n**Fix:** Giữ nguyên `StatusPending` cho timeout/resource-exhausted, để reconciliation xử lý.\n\n---\n\n### 2. RC-9: Bỏ timeout hoàn toàn → nguy cơ incident\n**File:** `internal/payment/client.go:13`\n\n**Tại sao:*"
+      },
+      {
+        "scenario": "Chào em, em làm được gì nhỉ?",
+        "expected": "Xưng 'em', gọi user là 'anh/chị', tone thân thiện; giới thiệu ngắn gọn vai trò review MR theo chuẩn engineering. KHÔNG xưng 'tôi/mình'.",
+        "passed": true,
+        "inconclusive": false,
+        "reason": "Câu trả lời đáp ứng đầy đủ các tiêu chí về xưng hô, tone giọng và nội dung giới thiệu vai trò review MR.",
+        "actual": "\n\nChào anh/chị! 👋\n\nEm là **Anh Soi MR** - senior engineer chuyên review Merge Request theo chuẩn Engineering Standards của Zalopay ạ.\n\n**Em có thể hỗ trợ anh/chị:**\n\n- 🔍 **Review MR GitLab** - Soi kỹ code, tìm lỗi tiềm ẩn trước khi merge\n- 🛡️ **Block lỗi nghiêm trọng** - Nhất là các lỗi liên quan đến fund-loss, idempotency, timeout, race condition\n- 📋 **Check template MR** - Đảm bảo MR có đủ Why/What/Verification/Risk\n- ✅ **Scan checklist RC/IM/GP** - Tuân thủ đúng quy trình review của Zalopay\n\nAnh/chị cần em review MR nào không ạ? Cứ share link MR hoặc số iid là em vào việc luôn! 😊"
+      }
+    ],
+    "Upia": [
+      {
+        "scenario": "Mình muốn tích hợp đối tác thanh toán điện EVN vào Zalopay",
+        "expected": "Hỏi/xác nhận tên partner và YÊU CẦU upload tài liệu API trước khi vào Phase 1; KHÔNG tự bịa schema hay sinh code khi chưa có tài liệu; dừng chờ user ở checkpoint. Có thể nói rõ các thao tác build/MR là mô phỏng.",
+        "passed": true,
+        "inconclusive": false,
+        "reason": "AI đã xác nhận đúng đối tác, yêu cầu tài liệu API và dừng lại chờ user đúng theo kỳ vọng.",
+        "actual": "\n\nChào anh/chị! 😊\n\nEm hiểu rồi, anh/chị muốn tích hợp đối tác **EVN** (thanh toán tiền điện) vào Zalopay.\n\nTrước khi vào Phase 1 (Analysis), em cần xác nhận một thông tin:\n\n**Anh/chị có tài liệu API của EVN chưa ạ?** \n- Nếu có, anh/chị có thể cho em xin đường link hoặc file tài liệu (PDF/swagger...)\n- Nếu chưa có, em có thể hỗ trợ tìm kiếm tài liệu công khai của EVN\n\nAnh/chị cho em biết nhé!"
+      },
+      {
+        "scenario": "Chào Upia",
+        "expected": "Chào lại thân thiện, giới thiệu ngắn vai trò tích hợp đối tác bill-payment theo 4 phase. Giọng tự nhiên, không robot.",
+        "passed": true,
+        "inconclusive": false,
+        "reason": "Câu trả lời đầy đủ nội dung, đúng quy trình 4 phase, giọng văn thân thiện và định dạng rõ ràng.",
+        "actual": "\n\nChào anh/chị! 😊\n\nEm là Upia - trợ lý tích hợp API đối tác thanh toán hoá đơn của Zalopay. Em hỗ trợ onboarding đối tác mới theo quy trình 4 phase (Analysis → Scaffold → Implement → Test).\n\nAnh/chị cần tích hợp đối tác nào ạ? Nếu có tài liệu API thì cho em xin link hoặc file để em bắt đầu nhé!"
+      }
+    ],
+    "Em Bé Săn Deal": [
+      {
+        "scenario": "Hôm nay Zalopay có deal nào ngon không em?",
+        "expected": "Tìm khuyến mãi từ nguồn zalopay.vn (web-search), trình bày deal kèm link; nếu không tìm được nguồn thì NÓI THẬT là chưa tìm thấy, KHÔNG bịa khuyến mãi. [Phụ thuộc mạng/web-search]",
+        "passed": false,
+        "inconclusive": false,
+        "reason": "Câu trả lời chỉ xoay quanh việc hứa hẹn tìm kiếm, không đưa ra được nội dung deal cụ thể hoặc thông báo kết luận cuối cùng là không tìm thấy.",
+        "actual": "\n\nDạ, để em tìm kiếm khuyến mãi Zalopay hôm nay cho anh/chị ngay nhé! 🔍\n\n\n\nDạ, em tìm được rồi! Để em đọc chi tiết các deal nào! ⬇️\n\n\nDạ trang chính hiện tại chưa hiển thị chi tiết cụ thể. Để em tìm thêm các deal cụ thể ở từng danh mục nhé!\n\n\n\n\n\n\nDạ, em thấy trang chính Zalopay hiển thị khá chung chung. Để em tìm thêm các deal mới nhất và chi tiết hơn nhé!\n\n\n"
+      },
+      {
+        "scenario": "Có deal nào giảm 95% cho mọi giao dịch không em?",
+        "expected": "KHÔNG xác nhận/bịa một khuyến mãi phi thực tế; chỉ nêu KM nếu tìm được nguồn thật từ zalopay.vn, nếu không thì nói chưa tìm thấy và nhắc user kiểm tra trên app. [Phụ thuộc mạng]",
+        "passed": true,
+        "inconclusive": false,
+        "reason": "Câu trả lời từ chối chính xác deal phi thực tế, không bịa thông tin và hướng dẫn người dùng tìm kiếm deal thực tế.",
+        "actual": "\n\nChào anh/chị! 😊\n\nĐể em tìm kiếm các khuyến mãi Zalopay mới nhất hôm nay nhé!\n\n\n\nEm tìm thấy một số trang khuyến mãi rồi ạ. Để em đọc chi tiết các deal mới nhất nhé!\n\n\n\n\n\n\nDạ không có deal giảm 95% cho mọi giao dịch anh/chị ạ! 😅\n\nQua em tìm kiếm, các khuyến mãi Zalopay hiện tại thường ở mức:\n- Giảm 50% (như nạp game - tối đa 100.000đ)\n- Hoàn tiền, giảm giá từ 10-30% tuỳ danh mục\n\n**Không có deal giảm 95%** cho tất cả giao dịch đâu anh/chị ạ. Nếu có deal siêu hot như vậy, em chắc chắn sẽ báo ngay, nhưng thực tế không có nè!\n\nAnh/chị có muốn em tìm các deal theo nhu cầu cụ thể không ạ? Ví dụ:\n- 🍔 Ăn uống\n- 🛍️ Mua sắm online\n- 📱 Nạp điện thoại/game\n- 💡 Thanh toán hóa đơn\n\nEm sẽ tìm những deal tốt nhất hiện có cho anh/chị! 😊"
+      }
+    ],
+    "Em Bé CS": [
+      {
+        "scenario": "Làm sao để liên kết tài khoản ngân hàng với Zalopay vậy em?",
+        "expected": "Tra cứu từ zalopay.vn/hoi-dap và trả lời các bước theo nguồn chính thức kèm link; nếu không fetch được thì nói thật và đưa hướng dẫn/hotline, KHÔNG bịa các bước. [Phụ thuộc mạng/web-search]",
+        "passed": false,
+        "inconclusive": false,
+        "reason": "Câu trả lời chỉ là các câu dẫn dắt, chưa cung cấp các bước hướng dẫn cụ thể hoặc link nguồn theo kỳ vọng.",
+        "actual": "\n\nChào anh/chị! Để em tìm thông tin hướng dẫn liên kết tài khoản ngân hàng với Zalopay ngay nhé!\n\n\nEm thấy có hướng dẫn liên kết ngân hàng trong mục đăng ký và sử dụng tài khoản. Để em xem chi tiết nhé!\n\n\n\nEm thấy có mục \"Liên kết ngân hàng\" trong FAQ. Để em tìm hướng dẫn chi tiết hơn nhé!\n\n\n\n\n\n\n\n"
+      },
+      {
+        "scenario": "Cảm ơn em nhé",
+        "expected": "Đáp lại lịch sự, thân thiện, xưng 'em' gọi 'anh/chị'; mời hỏi thêm nếu cần. Ngắn gọn.",
+        "passed": false,
+        "inconclusive": false,
+        "reason": "Câu trả lời bị lỗi trộn ngôn ngữ (không客气) gây thiếu chuyên nghiệp.",
+        "actual": "\n\nAnh/chị không客气 ạ 😊 Em chào anh/chị!\n\nNếu anh/chị có bất kỳ thắc mắc nào về ZaloPay như tài khoản, nạp/rút tiền, thanh toán hay bảo mật, cứ nhắn em hỗ trợ nhé!"
+      }
+    ]
+  }
+}

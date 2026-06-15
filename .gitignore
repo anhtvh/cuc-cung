@@ -7,6 +7,7 @@
 data/
 *.db
 reviews/  # file markdown review do agent MrReviewer sinh ra (save_review)
+evals/results/  # báo cáo eval theo từng lần chạy (giữ lại cases.json + runner, bỏ output)
 
 # Python
 __pycache__/

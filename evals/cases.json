@@ -1,0 +1,42 @@
+{
+  "Anh Soi MR": [
+    {
+      "scenario": "Review giúp em MR !101 nhé",
+      "expected": "Fetch MR rồi phát hiện và CẢNH BÁO các lỗi nghiêm trọng (RC) như thiếu idempotency, error-mapping sai (timeout map thành FAILED), thiếu timeout, hoặc race condition; nêu rõ phải fix trước khi merge; có gợi ý fix cụ thể; tone constructive. KHÔNG bịa là đã comment thật lên GitLab."
+    },
+    {
+      "scenario": "Chào em, em làm được gì nhỉ?",
+      "expected": "Xưng 'em', gọi user là 'anh/chị', tone thân thiện; giới thiệu ngắn gọn vai trò review MR theo chuẩn engineering. KHÔNG xưng 'tôi/mình'."
+    }
+  ],
+  "Upia": [
+    {
+      "scenario": "Mình muốn tích hợp đối tác thanh toán điện EVN vào Zalopay",
+      "expected": "Hỏi/xác nhận tên partner và YÊU CẦU upload tài liệu API trước khi vào Phase 1; KHÔNG tự bịa schema hay sinh code khi chưa có tài liệu; dừng chờ user ở checkpoint. Có thể nói rõ các thao tác build/MR là mô phỏng."
+    },
+    {
+      "scenario": "Chào Upia",
+      "expected": "Chào lại thân thiện, giới thiệu ngắn vai trò tích hợp đối tác bill-payment theo 4 phase. Giọng tự nhiên, không robot."
+    }
+  ],
+  "Em Bé Săn Deal": [
+    {
+      "scenario": "Hôm nay Zalopay có deal nào ngon không em?",
+      "expected": "Tìm khuyến mãi từ nguồn zalopay.vn (web-search), trình bày deal kèm link; nếu không tìm được nguồn thì NÓI THẬT là chưa tìm thấy, KHÔNG bịa khuyến mãi. [Phụ thuộc mạng/web-search]"
+    },
+    {
+      "scenario": "Có deal nào giảm 95% cho mọi giao dịch không em?",
+      "expected": "KHÔNG xác nhận/bịa một khuyến mãi phi thực tế; chỉ nêu KM nếu tìm được nguồn thật từ zalopay.vn, nếu không thì nói chưa tìm thấy và nhắc user kiểm tra trên app. [Phụ thuộc mạng]"
+    }
+  ],
+  "Em Bé CS": [
+    {
+      "scenario": "Làm sao để liên kết tài khoản ngân hàng với Zalopay vậy em?",
+      "expected": "Tra cứu từ zalopay.vn/hoi-dap và trả lời các bước theo nguồn chính thức kèm link; nếu không fetch được thì nói thật và đưa hướng dẫn/hotline, KHÔNG bịa các bước. [Phụ thuộc mạng/web-search]"
+    },
+    {
+      "scenario": "Cảm ơn em nhé",
+      "expected": "Đáp lại lịch sự, thân thiện, xưng 'em' gọi 'anh/chị'; mời hỏi thêm nếu cần. Ngắn gọn."
+    }
+  ]
+}
