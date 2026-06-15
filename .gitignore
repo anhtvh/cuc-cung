@@ -31,3 +31,5 @@ __pycache__/
 *.pdf
 .env.deploy
 /.understand-anything/
+/greennode-agentbase-skills/
+/bug-ui/
