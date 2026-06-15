@@ -42,3 +42,12 @@ Sau khi `package_project` trả `download_url`, trình bày cho user đúng tinh
 > trường thật trước khi dùng.
 
 Luôn kèm link `download_url` và đoạn cảnh báo trên ở câu trả lời cuối.
+
+## 5. Tài liệu lớn — sinh từng mảnh nhỏ (tránh timeout)
+Khi tài liệu API đối tác dài, ĐỪNG sinh cả `partner_schema.json` hay nhiều file trong MỘT
+lượt — một output quá lớn dễ chạm timeout của model.
+- Chia nhỏ: `save_file` skeleton schema trước (partner, base_url, auth, danh sách endpoint
+  rỗng), rồi bổ sung CHI TIẾT từng endpoint / nhóm error-code ở các lượt `save_file` kế tiếp.
+- Mỗi lượt chỉ tạo/ghi MỘT file (hoặc một phần file). Sinh 7 file `docs/` lần lượt, không gộp.
+- Dùng `list_workspace` để biết đã ghi tới đâu rồi làm tiếp phần còn thiếu — không sinh lại từ đầu.
+- Nếu một lượt vẫn bị cắt (model báo bận), cứ tiếp tục lượt sau từ đĩa; file đã `save_file` vẫn còn.
