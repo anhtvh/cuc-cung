@@ -724,12 +724,12 @@ class ChatEngine:
                     if self._builder_sla_seconds:
                         tool_kwargs["sla_seconds"] = self._builder_sla_seconds
                 elif _upia_exp:
-                    # Upia experimental cùng đặc tính như builder: save_file mang content LỚN
-                    # (schema, file Go) → BẮT BUỘC stream=False, nếu không content bị MaaS/minimax
-                    # cắt mất khi streaming → file lưu ra hỏng (xem P1-1). parallel_tools=False để
-                    # ghi tuần tự đáng tin. Nhiều round + SLA dài hơn vì 1 phase sinh nhiều file.
-                    tool_kwargs["stream"] = False
-                    tool_kwargs["parallel_tools"] = False
+                    # Upia experimental: GIỮ stream=True (mặc định) để user thấy token + tool steps
+                    # chạy — tránh cảm giác "treo" khi 1 phase sinh nhiều file (lượt có thể vài phút).
+                    # parallel_tools=True (mặc định): các save_file độc lập → ghi NHIỀU file/vòng →
+                    # ít vòng hơn, nhanh hơn, đỡ chạm trần. Chỉ nới round budget + SLA.
+                    # (save_file giữ content nhỏ nhờ hướng dẫn sinh từng mảnh trong experimental_mode.md,
+                    #  nên không dính lỗi cắt tool-arg lớn như create_skill của builder.)
                     tool_kwargs["max_rounds"] = self._builder_max_tool_rounds
                     if self._builder_sla_seconds:
                         tool_kwargs["sla_seconds"] = self._builder_sla_seconds
