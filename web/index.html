@@ -144,7 +144,8 @@
                 <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5l-8.6 8.6a5 5 0 0 1-7-7L13.8 5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.4a1.7 1.7 0 0 1-2.3-2.3l7.8-7.8"/></svg>
                 <input type="file" id="file-input" accept=".txt,.md,.pdf,.docx,.png,.jpg,.jpeg" multiple hidden>
               </label>
-              <textarea id="chat-input" rows="1" placeholder="Mô tả nhu cầu, hoặc @TenAgent để gọi trực tiếp…"></textarea>
+              <!-- placeholder dưới chỉ là fallback; setInputPlaceholder() override theo ngữ cảnh agent + xoay vòng gợi ý khi tự điều phối -->
+              <textarea id="chat-input" rows="1" placeholder="Mô tả việc cần làm — mình tự tìm đúng agent giúp bạn…"></textarea>
               <button type="submit" id="send-btn" title="Gửi">
                 <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
               </button>
@@ -453,6 +454,6 @@
 <script src="bg-fx.js?v=20260614t"></script>
 <script src="ui-icons.js?v=20260614n"></script>
 <script src="demo-data.js?v=20260614n"></script>
-<script src="app.js?v=20260615a"></script>
+<script src="app.js?v=20260615b"></script>
 </body>
 </html>

@@ -774,6 +774,7 @@ window.deleteConv = async function(key) {
 };
 
 function updateChatHeader(agentName) {
+  setInputPlaceholder(agentName);  // placeholder ô input bám theo ngữ cảnh agent (Hướng A/B)
   const avatar = $("#chd-avatar");
   const nameEl = $("#chd-name");
   const subEl  = $("#chd-sub");
@@ -797,6 +798,53 @@ function updateChatHeader(agentName) {
   avatar.className   = `chd-avatar chd-avatar-${domain}`;
   nameEl.textContent = a?.name || agentName;
   subEl.textContent  = a?.tagline || a?.description?.split(/[.。]/)[0]?.slice(0, 80) || "";
+}
+
+/* ─── Placeholder gợi ý cách dùng ────────────────────────────
+   Hướng A: placeholder bám theo agent đang chat (master / agent cụ thể).
+   Hướng B: khi tự điều phối (agentName == null) thì xoay vòng các gợi ý
+            để "dạy" user @mention, đính kèm, đặt agent riêng…           */
+const AUTO_HINTS = [
+  "Mô tả việc cần làm — mình tự tìm đúng agent giúp bạn…",
+  "Gõ @ để gọi thẳng một agent có sẵn…",
+  "Đính kèm file (📎) để mình đọc và xử lý giúp bạn…",
+  "VD: “Soạn email phản hồi khách hàng khiếu nại”…",
+  "Cần trợ lý riêng? Mô tả việc cần → mình tạo chuyên gia ngay…",
+];
+let _phRotateTimer = null;  // interval xoay placeholder ở chế độ tự điều phối
+let _phRotateIdx = 0;
+
+function _stopPhRotate() {
+  if (_phRotateTimer) { clearInterval(_phRotateTimer); _phRotateTimer = null; }
+}
+
+function setInputPlaceholder(agentName) {
+  const input = $("#chat-input");
+  if (!input) return;
+  _stopPhRotate();  // đổi ngữ cảnh → luôn dừng vòng xoay cũ trước
+
+  // Master: gợi ý cách "đặt hàng" một trợ lý mới
+  if (agentName === "master") {
+    input.placeholder = "VD: “Tạo trợ lý kiểm tra hợp đồng theo checklist phòng pháp chế”…";
+    return;
+  }
+  // Agent cụ thể: gợi ý ngay theo tagline/mô tả của chính agent đó
+  if (agentName) {
+    const a = _agentsCache.find((x) => x.name === agentName);
+    const tag = a?.tagline || a?.description?.split(/[.。]/)[0]?.slice(0, 50);
+    const disp = a?.name || agentName;
+    input.placeholder = tag ? `Hỏi ${disp} — ${tag}…` : `Nhắn cho ${disp}…`;
+    return;
+  }
+  // Tự điều phối: Hướng B — xoay vòng gợi ý (chỉ đổi khi ô input đang trống)
+  _phRotateIdx = 0;
+  input.placeholder = AUTO_HINTS[0];
+  _phRotateTimer = setInterval(() => {
+    // Bỏ qua nếu user đang gõ (placeholder không hiện) hoặc đã chốt agent
+    if (input.value.trim() || state.stickyAgent) return;
+    _phRotateIdx = (_phRotateIdx + 1) % AUTO_HINTS.length;
+    input.placeholder = AUTO_HINTS[_phRotateIdx];
+  }, 3500);
 }
 
 function renderSidebar() {
