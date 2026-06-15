@@ -95,9 +95,10 @@ class Settings(BaseSettings):
     self_test_fix_attempts: int = 2
 
     # --- Eval (chỉ dùng khi chạy `python -m evals`) ---
-    # Model judge cho eval. Để trống → dùng router_model (rẻ, đủ cho phần lớn case). Có thể đặt
-    # model mạnh hơn (vd minimax/minimax-m2.5) để giảm chấm sai; judge luôn tắt thinking + đi
-    # endpoint OpenAI nên reasoning model vẫn trả JSON bình thường.
+    # Model judge cho eval. Để trống → dùng router_model (gemma) — đã VERIFY 15/06 là ổn nhất cho
+    # judge JSON. CẢNH BÁO: KHÔNG dùng minimax/minimax-m2.5 làm judge — thực nghiệm 15/06 cho thấy
+    # nó trả JSON lỗi/cụt (reason rỗng, fail oan câu trả lời tốt, có case inconclusive) dù đã tắt
+    # thinking. Knob này để thử model judge khác trong tương lai, không phải để chuyển sang minimax.
     eval_judge_model: str = ""
 
     # --- AgentBase (dùng từ 14/06) ---
