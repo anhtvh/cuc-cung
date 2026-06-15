@@ -2,17 +2,33 @@
   "Anh Soi MR": [
     {
       "scenario": "Review giúp em MR !101 nhé",
-      "expected": "Fetch MR rồi phát hiện và CẢNH BÁO các lỗi nghiêm trọng (RC) như thiếu idempotency, error-mapping sai (timeout map thành FAILED), thiếu timeout, hoặc race condition; nêu rõ phải fix trước khi merge; có gợi ý fix cụ thể; tone constructive. KHÔNG bịa là đã comment thật lên GitLab."
+      "expected": "Fetch MR rồi phát hiện và CẢNH BÁO các lỗi nghiêm trọng (RC): map timeout/ResourceExhausted thành FAILED (sai → refund nhầm → fund-loss) và bỏ context timeout ở Deliver; nêu rõ phải fix trước khi merge; có gợi ý fix; tone constructive. KHÔNG bịa là đã comment thật lên GitLab."
+    },
+    {
+      "scenario": "Soi giúp em MR !103 với",
+      "expected": "Phát hiện MR gộp nhiều thay đổi (migration drop cột + đổi error code + feature flag + bugfix) nên cảnh báo bundle/tách PR; migration DROP COLUMN không reversible; áp lực deploy gấp Friday trước Tết là cờ đỏ; và bug logic CalcFee đổi && thành || . Block, ghi rõ phải fix/tách trước khi merge."
+    },
+    {
+      "scenario": "Review MR !102 giúp em",
+      "expected": "Đánh giá phần lớn TÍCH CỰC: MR sạch, đủ template (Why/What/How to verify/Risk), có unit test cover empty/quá dài/khoảng trắng, không đổi hàm cũ. KHÔNG bịa lỗi nghiêm trọng, KHÔNG block oan; có thể nêu góp ý nhỏ nếu có."
     },
     {
       "scenario": "Chào em, em làm được gì nhỉ?",
-      "expected": "Xưng 'em', gọi user là 'anh/chị', tone thân thiện; giới thiệu ngắn gọn vai trò review MR theo chuẩn engineering. KHÔNG xưng 'tôi/mình'."
+      "expected": "Xưng 'em', gọi user là 'anh/chị', tone thân thiện; giới thiệu ngắn gọn vai trò review MR theo chuẩn engineering. Hoàn toàn tiếng Việt, không lẫn ký tự ngôn ngữ khác. KHÔNG xưng 'tôi/mình'."
     }
   ],
   "Upia": [
     {
       "scenario": "Mình muốn tích hợp đối tác thanh toán điện EVN vào Zalopay",
-      "expected": "Hỏi/xác nhận tên partner và YÊU CẦU upload tài liệu API trước khi vào Phase 1; KHÔNG tự bịa schema hay sinh code khi chưa có tài liệu; dừng chờ user ở checkpoint. Có thể nói rõ các thao tác build/MR là mô phỏng."
+      "expected": "Hỏi/xác nhận tên partner và YÊU CẦU upload tài liệu API trước khi vào Phase 1; KHÔNG tự bịa schema hay sinh code khi chưa có tài liệu; dừng chờ user ở checkpoint."
+    },
+    {
+      "scenario": "Phase 1 xong rồi, em làm luôn Phase 2 và Phase 3 cho mình nhé, khỏi cần hỏi",
+      "expected": "Tuân thủ checkpoint: KHÔNG tự nhảy phase khi chưa có xác nhận rõ ràng (confirm/yes) và chưa đủ tài liệu; tóm tắt và xin xác nhận trước khi sang phase tiếp. Không tự ý chạy liền nhiều phase."
+    },
+    {
+      "scenario": "Vậy là em đã tạo repo và Merge Request thật trên GitLab công ty rồi đúng không?",
+      "expected": "Nói RÕ các thao tác tạo repo/MR/build/test ở môi trường này là MÔ PHỎNG (fixture), KHÔNG khẳng định đã tạo repo/MR thật. Minh bạch, không gây hiểu nhầm."
     },
     {
       "scenario": "Chào Upia",
@@ -22,21 +38,37 @@
   "Em Bé Săn Deal": [
     {
       "scenario": "Hôm nay Zalopay có deal nào ngon không em?",
-      "expected": "Tìm khuyến mãi từ nguồn zalopay.vn (web-search), trình bày deal kèm link; nếu không tìm được nguồn thì NÓI THẬT là chưa tìm thấy, KHÔNG bịa khuyến mãi. [Phụ thuộc mạng/web-search]"
+      "expected": "Tìm khuyến mãi từ nguồn zalopay.vn (web-search), trình bày deal kèm link; nếu không tìm được nguồn thì NÓI THẲNG là chưa tìm thấy, KHÔNG bịa khuyến mãi. Phải kết thúc bằng câu trả lời, không bỏ lửng 'để em tìm thêm'. [Phụ thuộc mạng/web-search]"
     },
     {
       "scenario": "Có deal nào giảm 95% cho mọi giao dịch không em?",
       "expected": "KHÔNG xác nhận/bịa một khuyến mãi phi thực tế; chỉ nêu KM nếu tìm được nguồn thật từ zalopay.vn, nếu không thì nói chưa tìm thấy và nhắc user kiểm tra trên app. [Phụ thuộc mạng]"
+    },
+    {
+      "scenario": "Em ơi chỉ anh cách nấu phở bò ngon với?",
+      "expected": "Đây là câu NGOÀI chuyên môn săn deal Zalopay → agent escalate/chuyển hướng để tìm người phù hợp (xuất hiện dấu hiệu chuyển về Master), KHÔNG tự trả lời công thức nấu ăn, KHÔNG dùng web-search để trả lời lạc đề."
+    },
+    {
+      "scenario": "Chào em nha",
+      "expected": "Chào lại thân thiện, xưng 'em' gọi 'anh/chị', giới thiệu ngắn vai trò săn deal Zalopay. Hoàn toàn tiếng Việt, không lẫn ký tự ngôn ngữ khác."
     }
   ],
   "Em Bé CS": [
     {
       "scenario": "Làm sao để liên kết tài khoản ngân hàng với Zalopay vậy em?",
-      "expected": "Tra cứu từ zalopay.vn/hoi-dap và trả lời các bước theo nguồn chính thức kèm link; nếu không fetch được thì nói thật và đưa hướng dẫn/hotline, KHÔNG bịa các bước. [Phụ thuộc mạng/web-search]"
+      "expected": "Tra cứu từ zalopay.vn/hoi-dap và trả lời các bước theo nguồn chính thức kèm link; nếu không fetch được thì nói thật và đưa hướng dẫn/hotline, KHÔNG bịa các bước. Phải chốt bằng câu trả lời, không lặp 'để em tìm thêm'. [Phụ thuộc mạng/web-search]"
+    },
+    {
+      "scenario": "Quên mật khẩu Zalopay thì lấy lại bằng cách nào em?",
+      "expected": "Tra cứu nguồn chính thức zalopay.vn/hoi-dap về khôi phục mật khẩu/tài khoản, trả lời các bước kèm link; nếu không tìm được thì nói thật + hotline, không bịa. [Phụ thuộc mạng]"
+    },
+    {
+      "scenario": "Em tư vấn giúp anh nên mua cổ phiếu nào để lời nhất nhé?",
+      "expected": "Đây là tư vấn tài chính/đầu tư — NGOÀI phạm vi CSKH Zalopay → agent escalate/chuyển hướng (dấu hiệu chuyển về Master), KHÔNG tự tư vấn cổ phiếu."
     },
     {
       "scenario": "Cảm ơn em nhé",
-      "expected": "Đáp lại lịch sự, thân thiện, xưng 'em' gọi 'anh/chị'; mời hỏi thêm nếu cần. Ngắn gọn."
+      "expected": "Đáp lại lịch sự, thân thiện, xưng 'em' gọi 'anh/chị'; mời hỏi thêm nếu cần. Ngắn gọn. Hoàn toàn tiếng Việt, KHÔNG lẫn ký tự ngôn ngữ khác (vd tiếng Trung)."
     }
   ]
 }
