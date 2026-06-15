@@ -363,6 +363,55 @@ main { flex: 1; overflow: hidden; display: flex; min-height: 0; position: relati
 .hgc-text { font-size: 13.5px; color: var(--tx2); font-weight: 500; display: inline-flex; align-items: center; gap: 8px; }
 .home-guest-cta[hidden] { display: none; }
 
+/* ─── Home journey: Khởi tạo → Trải nghiệm → Lan tỏa (connected rail) ─── */
+/* đặt trong .home-hero (giữa h1 và .path-cards): bỏ padding ngang (hero đã pad),
+   thu max-width cho cân với .path-cards (760px) bên dưới, margin-bottom kế thừa nhịp <p> cũ */
+.home-journey { position: relative; max-width: 720px; margin: 4px auto 36px; padding: 0; }
+
+/* đường ray nối tâm 3 badge — gradient xanh dương → xanh lá (ẩn dụ 1 người → cả công ty) */
+.journey-rail {
+  position: absolute; top: 22px; left: 16.66%; right: 16.66%; height: 8px;
+  z-index: 1; pointer-events: none;
+}
+.journey-track {
+  position: absolute; top: 3px; left: 0; right: 0; height: 2px; border-radius: 2px;
+  background: linear-gradient(90deg, var(--blue), var(--green)); opacity: .5;
+}
+.journey-pulse {
+  position: absolute; top: 0; left: 0; width: 8px; height: 8px; border-radius: 50%;
+  background: #fff; box-shadow: 0 0 10px 2px var(--blue), 0 0 0 2px var(--blue-soft2);
+  animation: journeyPulse 2.8s var(--ease) infinite;
+}
+@keyframes journeyPulse {
+  0%   { left: 0;    opacity: 0; }
+  12%  { opacity: 1; }
+  88%  { opacity: 1; }
+  100% { left: 100%; opacity: 0; }
+}
+
+.journey-steps {
+  position: relative; z-index: 2; margin: 0; padding: 0; list-style: none;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;
+}
+.jstep { text-align: center; display: flex; flex-direction: column; align-items: center; }
+.jstep-badge {
+  width: 52px; height: 52px; border-radius: 16px; margin-bottom: 14px;
+  display: inline-flex; align-items: center; justify-content: center; color: #fff;
+  background: var(--grad-blue);
+  /* ring màu nền để đường ray "cắm" gọn vào badge */
+  box-shadow: var(--glow), 0 0 0 6px var(--bg);
+  transition: transform .2s var(--ease);
+}
+.jstep:hover .jstep-badge { transform: translateY(-3px); }
+.jstep-badge .ic { font-size: 24px; }
+.jstep.jstep-share .jstep-badge { background: linear-gradient(135deg, var(--green), #07c25a); box-shadow: 0 6px 22px rgba(0,177,79,.32), 0 0 0 6px var(--bg); }
+.jstep-num {
+  font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 500;
+  color: var(--tx3); letter-spacing: .08em; margin-bottom: 8px;
+}
+.jstep-title { font-size: 16.5px; font-weight: 700; margin-bottom: 6px; letter-spacing: -.01em; }
+.jstep-desc { font-size: 13px; color: var(--tx2); line-height: 1.6; max-width: 26ch; margin: 0 auto; text-wrap: pretty; }
+
 .home-section { max-width: 1040px; margin: 26px auto 0; padding: 0 26px 64px; }
 .section-title { font-size: 24px; font-weight: 800; letter-spacing: -.025em; margin-bottom: 5px; }
 .section-sub { font-size: 14px; color: var(--tx2); margin-bottom: 22px; }
@@ -547,7 +596,9 @@ main { flex: 1; overflow: hidden; display: flex; min-height: 0; position: relati
 /* #8 fix: cố định width 175px + container rộng (handoff-card 80%) làm 4 thẻ wrap 3+1,
    chừa khoảng phải trống. Giới hạn max-width để xếp 2 thẻ/hàng (4 thẻ → 2×2 cân đối) và
    cho thẻ flex-grow lấp đầy hàng; align-items:stretch để 2 thẻ cùng hàng bằng chiều cao. */
-.tpl-grid { justify-content: flex-start; margin-top: 10px; align-items: stretch; max-width: 380px; }
+/* 8 mẫu: muốn 4 cột × 2 hàng → nới max-width đủ 4 thẻ (4×160 + 3×gap9 ≈ 667).
+   cũ: max-width: 380px; (2 cột → 2×4 khi có 8 mẫu) */
+.tpl-grid { justify-content: flex-start; margin-top: 10px; align-items: stretch; max-width: 720px; }
 .tpl-grid .wcard {
   display: flex; flex-direction: column;
   align-items: flex-start; justify-content: flex-start;
@@ -555,7 +606,8 @@ main { flex: 1; overflow: hidden; display: flex; min-height: 0; position: relati
   flex: 1 1 160px; max-width: none;
 }
 /* panel "Tạo từ mẫu" ở welcome — ẩn cho tới khi bấm "Đặt hàng trợ lý riêng" */
-.tpl-panel { display: none; max-width: 600px; width: 100%; margin-top: 4px; }
+/* cũ: max-width: 600px; — nới theo .tpl-grid để panel welcome chứa đủ 4 cột */
+.tpl-panel { display: none; max-width: 720px; width: 100%; margin-top: 4px; }
 .tpl-panel.open { display: block; }
 .tpl-panel-lead { font-size: 13px; color: var(--tx2); margin-bottom: 8px; }
 .tpl-describe-btn {
@@ -1010,6 +1062,13 @@ main { flex: 1; overflow: hidden; display: flex; min-height: 0; position: relati
 }
 @media (max-width: 680px) {
   .path-cards, .welcome-paths { grid-template-columns: 1fr; }
+  .journey-rail { display: none; }
+  .journey-steps { grid-template-columns: 1fr; gap: 18px; }
+  .jstep { flex-direction: row; align-items: center; text-align: left; gap: 14px; flex-wrap: wrap; }
+  .jstep-badge { margin-bottom: 0; box-shadow: var(--glow); }
+  .jstep.jstep-share .jstep-badge { box-shadow: 0 6px 22px rgba(0,177,79,.32); }
+  .jstep-num { margin-bottom: 0; order: -1; flex-basis: 100%; }
+  .jstep-desc { margin: 0; }
   .home-hero { padding: 52px 20px 40px; }
   .inner { padding: 26px 18px 56px; }
   .chat-sidebar { display: none; }
@@ -1028,6 +1087,7 @@ main { flex: 1; overflow: hidden; display: flex; min-height: 0; position: relati
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .05ms !important; }
+  .journey-pulse { display: none; }
 }
 
 /* ═══ Glow & hover energy ═══════════════════════════════════ */
