@@ -179,3 +179,22 @@ class TestSelfTestJudge:
         assert report.failed == 1
         assert report.inconclusive == 0
         assert report.all_passed is False
+
+    def test_judge_prompt_includes_today_so_no_future_false_fail(self):
+        """#2: judge phải biết ngày hôm nay để không tưởng mốc gần đây là 'tương lai/bịa'."""
+        from datetime import datetime, timedelta, timezone
+
+        class _CapturingJudge:
+            system = None
+
+            def classify_json(self, system, message, schema_hint, model=None):
+                self.system = system
+                return {"pass": True, "reason": "ok"}
+
+        judge = _CapturingJudge()
+        AgentTester(_FakeRunEngine(), judge, judge_model="m").run_tests(
+            make_agent(), [TestCase("tin hôm nay", "kỳ vọng")]
+        )
+        today = datetime.now(timezone(timedelta(hours=7))).date().isoformat()
+        assert today in judge.system
+        assert "tương lai" in judge.system.lower() or "hôm nay" in judge.system.lower()

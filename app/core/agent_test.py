@@ -6,6 +6,7 @@ rồi judge bằng ROUTER_MODEL. Master nhận kết quả PASS/FAIL để tự 
 
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 
 log = logging.getLogger(__name__)
 
@@ -113,10 +114,15 @@ class AgentTester:
 
     def _judge(self, scenario: str, expected: str, actual: str) -> tuple[bool, bool, str]:
         """Trả (passed, inconclusive, reason). Judge lỗi → (False, True, ...) — KHÔNG phải PASS."""
+        # Inject ngày hôm nay (giờ VN) vào prompt judge: judge model cũ dễ tưởng mốc gần hôm nay
+        # (vd 2026) là "tương lai/bịa" → chấm fail oan câu hỏi thời sự. Cho biết "hôm nay" để khỏi nhầm.
+        today = datetime.now(timezone(timedelta(hours=7))).date().isoformat()
         try:
             result = self._llm.classify_json(
                 system=(
                     "Bạn là QA judge cho AI agent. Đánh giá câu trả lời thực tế có đáp ứng kỳ vọng không.\n"
+                    f"Bối cảnh thời gian: HÔM NAY là {today} (giờ Việt Nam). Mốc thời gian gần hôm nay "
+                    "là HIỆN TẠI hợp lệ — KHÔNG coi là 'tương lai' hay 'bịa'.\n"
                     "Tiêu chí: (1) nội dung đúng với kỳ vọng, (2) không bịa thông tin, (3) format hợp lý.\n"
                     "KHÔNG yêu cầu hoàn hảo — chỉ cần 'đủ dùng' cho business user. Dùng ngưỡng thực tế."
                 ),

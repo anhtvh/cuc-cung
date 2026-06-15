@@ -94,6 +94,12 @@ class Settings(BaseSettings):
     # Số vòng master tự sửa khi fail trước khi báo user
     self_test_fix_attempts: int = 2
 
+    # --- Eval (chỉ dùng khi chạy `python -m evals`) ---
+    # Model judge cho eval. Để trống → dùng router_model (rẻ, đủ cho phần lớn case). Có thể đặt
+    # model mạnh hơn (vd minimax/minimax-m2.5) để giảm chấm sai; judge luôn tắt thinking + đi
+    # endpoint OpenAI nên reasoning model vẫn trả JSON bình thường.
+    eval_judge_model: str = ""
+
     # --- AgentBase (dùng từ 14/06) ---
     greennode_client_id: str = ""
     greennode_client_secret: str = ""

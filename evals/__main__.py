@@ -12,7 +12,8 @@ from pathlib import Path
 
 from app.config import load_settings
 from app.core.agent_test import AgentTester
-from app.main import create_app, make_router_llm
+from app.llm.openai_client import OpenAIMaaSClient
+from app.main import create_app
 from evals.runner import build_summary, format_table, load_cases, run_eval, save_report
 
 log = logging.getLogger(__name__)
@@ -23,12 +24,20 @@ def main() -> None:
     app = create_app(settings)
     c = app.state.container
 
-    # Judge dùng router model (rẻ) qua endpoint OpenAI — giống self-test trong runtime.
+    # Judge qua endpoint OpenAI (tắt thinking → reasoning model vẫn trả JSON). #2: model judge
+    # cấu hình qua EVAL_JUDGE_MODEL (mặc định router_model rẻ; đặt minimax để giảm chấm sai).
     # P2-A: cap vòng = max_tool_rounds (Flow 3 runtime) để eval mô phỏng đúng runtime, không
     # cắt oan agent web giữa chừng search→fetch→answer.
-    judge_llm = make_router_llm(settings)
+    judge_model = settings.eval_judge_model or settings.router_model
+    judge_llm = OpenAIMaaSClient(
+        base_url=settings.maas_base_url,
+        api_key=settings.maas_api_key,
+        default_model=judge_model,
+        request_timeout=settings.llm_request_timeout_seconds,
+    )
+    print(f"Judge model: {judge_model}")
     tester = AgentTester(
-        c.engine, judge_llm, settings.router_model,
+        c.engine, judge_llm, judge_model,
         sandbox_rounds=settings.max_tool_rounds,
     )
 
