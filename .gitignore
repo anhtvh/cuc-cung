@@ -30,3 +30,4 @@ __pycache__/
 *.docx
 *.pdf
 .env.deploy
+/.understand-anything/
