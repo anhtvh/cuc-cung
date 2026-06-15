@@ -33,6 +33,17 @@ class KnowledgeService:
         log.info("knowledge ingest: agent=%s file=%s chunks=%d", agent_name, filename, n)
         return {"doc_id": doc_id, "filename": filename, "chunk_count": n}
 
+    def ingest_text(self, agent_name: str, filename: str, text: str, created_by: str) -> dict:
+        """Như ingest() nhưng nhận TEXT đã trích sẵn (vd attachment chat đã qua /upload) —
+        bỏ bước extract. Dùng cho Upia: nạp tài liệu đối tác lớn vào kho thay vì nhồi vào context."""
+        chunks = chunk_text(text, size=self._chunk_chars, overlap=self._overlap)
+        if not chunks:
+            raise UnsupportedDocument("Tài liệu không có nội dung sau khi xử lý.")
+        n = self._store.insert_chunks(agent_name, filename, chunks)
+        doc_id = self._docs.add(agent_name, filename, n, created_by)
+        log.info("knowledge ingest_text: scope=%s file=%s chunks=%d", agent_name, filename, n)
+        return {"doc_id": doc_id, "filename": filename, "chunk_count": n}
+
     def search(self, agent_name: str, query: str) -> list[dict]:
         """Top-k đoạn liên quan [{source, content, score}] — đã lọc threshold. Lỗi → trả rỗng (không chặn chat)."""
         if not query.strip():

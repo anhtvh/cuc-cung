@@ -26,6 +26,9 @@ _UPIA_WORKSPACE_TOOLS = {
     "partner-integration__list_workspace",
     "partner-integration__package_project",
 }
+# Tài liệu đối tác dài hơn ngưỡng này (ký tự) → Upia experimental nạp vào RAG (scope theo
+# conversation) thay vì nhồi full text vào context mỗi lượt. ~8k ký tự ≈ 2k token.
+_UPIA_RAG_INGEST_MIN_CHARS = 8000
 
 # Guardrail ngôn ngữ (deterministic, không phụ thuộc model nghe lời prompt P2-B):
 # minimax thỉnh thoảng rò ký tự Trung vào câu tiếng Việt (vd "随时", "不客气"). Mọi agent ở đây
@@ -445,6 +448,7 @@ class ChatEngine:
         extra_tools: list[ToolDef] | None = None,
         extra_executor: ToolExecutor | None = None,
         expose_workspace_tools: bool = False,
+        knowledge_scope: str | None = None,
     ) -> tuple[list[ToolDef], ToolExecutor]:
         """Lắp bộ tool + executor cho 1 lượt. DÙNG CHUNG cho stream() (runtime) và run_once()
         (sandbox self-test/eval) → hành vi agent KHỚP nhau (P2-1: trước đây run_once không inject
@@ -508,13 +512,16 @@ class ChatEngine:
                 return _base(name, args)
 
         # RAG: agent có tài liệu → inject knowledge_search (gated bởi module bật).
+        # knowledge_scope: namespace tài liệu — mặc định agent.name; Upia experimental dùng
+        # scope theo conversation (vd "Upia::<conv_id>") để cô lập tài liệu đối tác từng cuộc.
         if has_kb:
             tools = [_KNOWLEDGE_SEARCH_TOOL, *tools]
             _kb_base = execute
+            _kb_scope = knowledge_scope or agent.name
 
-            def execute(name: str, args: dict[str, Any], _base=_kb_base, _agent=agent):  # type: ignore[misc]
+            def execute(name: str, args: dict[str, Any], _base=_kb_base, _scope=_kb_scope):  # type: ignore[misc]
                 if name == "knowledge_search":
-                    hits = self._knowledge.search(_agent.name, str(args.get("query", "")))
+                    hits = self._knowledge.search(_scope, str(args.get("query", "")))
                     if not hits:
                         return ToolResult(content="Không tìm thấy nội dung liên quan trong tài liệu nội bộ.")
                     parts = [f"[Nguồn: {h.get('source') or 'tài liệu'}]\n{h.get('content', '')}" for h in hits]
@@ -601,17 +608,45 @@ class ChatEngine:
                 skill_names = ", ".join(agent_skills)
                 message = f"Bắt đầu ngay. Thực hiện đầy đủ tất cả skill: {skill_names}. Không hỏi tôi cần gì."
 
-        # Flow 5: Upia ở chế độ thử nghiệm → nối chỉ thị experimental_mode.md vào extra_system
-        # (chạy tới hết Phase 3 → package_project → disclaimer, bỏ bước mock build/test/MR/deploy).
-        if agent.name == _UPIA_AGENT_NAME and self._upia_experimental_mode:
+        # Flow 5: Upia experimental — tính sớm (dùng cho RAG ingest, prompt, tool gating).
+        _upia_exp = agent.name == _UPIA_AGENT_NAME and self._upia_experimental_mode
+        _kb_scope: str | None = None  # namespace RAG riêng theo conversation (nếu nạp doc lớn)
+
+        if _upia_exp:
+            # Nối chỉ thị experimental_mode.md vào extra_system (chạy tới hết Phase 3 →
+            # package_project → disclaimer, bỏ bước mock build/test/MR/deploy).
             try:
                 _note = _UPIA_EXPERIMENTAL_MD.read_text(encoding="utf-8")
                 extra_system = f"{extra_system}\n\n{_note}" if extra_system else _note
             except OSError as e:  # thiếu file → log, vẫn chạy flow thường (không chết)
                 log.warning("không đọc được experimental_mode.md: %s", e)
 
-        # RAG: agent có tài liệu? Tính 1 lần — dùng cho cả prompt suffix lẫn inject tool bên dưới.
-        has_kb = self._knowledge is not None and self._knowledge.has_docs(agent.name)
+            # Tài liệu đối tác LỚN → nạp vào kho tri thức (scope theo conversation) thay vì nhồi
+            # full text vào context mỗi lượt. Upia truy vấn từng phần qua knowledge_search.
+            if (self._knowledge is not None and attachment
+                    and attachment.get("content_type") == "text" and attachment.get("text")
+                    and len(attachment["text"]) >= _UPIA_RAG_INGEST_MIN_CHARS):
+                _doc = attachment["text"]
+                _scope = f"{_UPIA_AGENT_NAME}::{conv_id}"
+                _fname = attachment.get("filename") or "tai-lieu-doi-tac.txt"
+                try:
+                    _res = self._knowledge.ingest_text(_scope, _fname, _doc, user_id)
+                    _kb_scope = _scope
+                    # Thay full text bằng pointer ngắn — doc không còn vào context.
+                    attachment = {**attachment, "text": (
+                        f"[Tài liệu '{_fname}' ({len(_doc)} ký tự) đã được nạp vào kho tri thức "
+                        f"({_res['chunk_count']} đoạn). Dùng tool knowledge_search để truy vấn từng phần "
+                        f"(auth, endpoint, error code, business rule…) thay vì đọc cả file.]"
+                    )}
+                    log.info("Upia RAG: nạp tài liệu lớn scope=%s (%d đoạn)", _scope, _res["chunk_count"])
+                except Exception as e:  # noqa: BLE001 — ingest lỗi → fallback giữ full text
+                    log.warning("Upia RAG ingest lỗi, fallback full text: %s", e)
+                    _kb_scope = None
+
+        # RAG: có tài liệu? (agent-level docs HOẶC doc đối tác vừa nạp theo conversation cho Upia).
+        has_kb = self._knowledge is not None and (
+            self._knowledge.has_docs(agent.name) or _kb_scope is not None
+        )
         system = self.build_system_prompt(agent, user_id, message=message, auto_start=auto_start, extra_system=extra_system, salutation=salutation, is_guest=is_guest, knowledge_enabled=has_kb)
         # auto_start: bỏ qua history — tránh model follow pattern cũ "agent hỏi ngược" từ các lần test trước.
         history = [] if auto_start else self._memory.get_history(user_id, conv_id, limit=self._history_limit)
@@ -641,10 +676,10 @@ class ChatEngine:
         # Lắp tool + executor (escalate / request_update / knowledge_search / master builder) —
         # DÙNG CHUNG với run_once() qua _assemble_tools để sandbox self-test/eval khớp runtime (P2-1).
         # Flow 5: Upia chế độ thử nghiệm → lộ tool workspace; ngoài ra gỡ (giữ flow gốc nguyên vẹn).
-        _upia_exp = agent.name == _UPIA_AGENT_NAME and self._upia_experimental_mode
+        # knowledge_scope: doc đối tác nạp theo conversation (nếu có) → knowledge_search đúng namespace.
         tools, execute = self._assemble_tools(
             agent, message, has_kb, extra_tools=extra_tools, extra_executor=extra_executor,
-            expose_workspace_tools=_upia_exp,
+            expose_workspace_tools=_upia_exp, knowledge_scope=_kb_scope,
         )
 
         if _upia_exp:

@@ -43,7 +43,13 @@ Sau khi `package_project` trả `download_url`, trình bày cho user đúng tinh
 
 Luôn kèm link `download_url` và đoạn cảnh báo trên ở câu trả lời cuối.
 
-## 5. Tài liệu lớn — sinh từng mảnh nhỏ (tránh timeout)
+## 5. Tài liệu lớn — RAG + sinh từng mảnh nhỏ (tránh timeout)
+**Nếu tài liệu đối tác đã được nạp vào kho tri thức** (attachment hiển thị dòng "…đã được nạp
+vào kho tri thức (N đoạn). Dùng tool knowledge_search…"): ĐỪNG đòi đọc cả file. Dùng tool
+`knowledge_search` để truy vấn TỪNG phần khi cần — query theo chủ đề: "authentication / chữ ký",
+"danh sách endpoint + path + method", "request/response fields của GetBill", "error codes",
+"min amount / business rules", "định dạng ngày, đơn vị tiền"… Ghép kết quả để dựng schema.
+
 Khi tài liệu API đối tác dài, ĐỪNG sinh cả `partner_schema.json` hay nhiều file trong MỘT
 lượt — một output quá lớn dễ chạm timeout của model.
 - Chia nhỏ: `save_file` skeleton schema trước (partner, base_url, auth, danh sách endpoint
