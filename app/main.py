@@ -35,6 +35,7 @@ from app.memory.sql_memory import SqlMemory
 from app.storage.sql import SqlAgentRepo, SqlConvMetaRepo, SqlFeedbackRepo, SqlSkillRepo, SqlUsageRepo, SqlUserRepo, make_engine
 from app.tools.catalog import SystemProvider, ToolCatalog
 from app.tools.mcp_gateway import IamTokenProvider, McpGatewayProvider
+from app.tools.file_export import FileExportProvider
 from app.tools.partner_integration import PartnerIntegrationProvider
 from app.tools.mock.company_docs import CompanyDocsProvider
 from app.tools.mock.contract_db import ContractDbProvider
@@ -185,6 +186,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ContractDbProvider(),
         CompanyDocsProvider(),
         PartnerIntegrationProvider(),
+        FileExportProvider(),  # plugin xuất file CSV/Excel/Word — connector chọn được (Flow 5)
         GitlabProvider(),  # mock GitLab cho agent MrReviewer (Flow 5)
         web_search_provider,
     ]
