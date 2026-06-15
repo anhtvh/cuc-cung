@@ -86,9 +86,11 @@ class Settings(BaseSettings):
     self_test_enabled: bool = True
     # Số test case tối đa mỗi build session (cap credit)
     self_test_max_cases: int = 3
-    # Tool rounds tối đa mỗi test case trong sandbox
-    # web-search agent cần ≥3 (search → fetch → answer), để 5 cho margin
-    self_test_sandbox_rounds: int = 5
+    # Tool rounds tối đa mỗi test case trong sandbox.
+    # P2-A: phải KHỚP runtime (max_tool_rounds=10). Baseline 15/06 cho thấy 5 vòng cắt oan
+    # agent web (search nhiều lần → fetch → answer >5 vòng) → agent "hứa rồi không trả lời",
+    # self-test/eval chấm fail oan. Đặt = 10 để sandbox phản ánh đúng runtime.
+    self_test_sandbox_rounds: int = 10
     # Số vòng master tự sửa khi fail trước khi báo user
     self_test_fix_attempts: int = 2
 

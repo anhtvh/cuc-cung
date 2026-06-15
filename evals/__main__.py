@@ -24,10 +24,12 @@ def main() -> None:
     c = app.state.container
 
     # Judge dùng router model (rẻ) qua endpoint OpenAI — giống self-test trong runtime.
+    # P2-A: cap vòng = max_tool_rounds (Flow 3 runtime) để eval mô phỏng đúng runtime, không
+    # cắt oan agent web giữa chừng search→fetch→answer.
     judge_llm = make_router_llm(settings)
     tester = AgentTester(
         c.engine, judge_llm, settings.router_model,
-        sandbox_rounds=settings.self_test_sandbox_rounds,
+        sandbox_rounds=settings.max_tool_rounds,
     )
 
     cases = load_cases()

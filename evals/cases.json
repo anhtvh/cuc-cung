@@ -16,7 +16,7 @@
     },
     {
       "scenario": "Chào Upia",
-      "expected": "Chào lại thân thiện, giới thiệu ngắn vai trò tích hợp đối tác bill-payment theo 4 phase. Giọng tự nhiên, không robot."
+      "expected": "Chào lại thân thiện, giới thiệu ngắn vai trò (trợ lý tích hợp API đối tác thanh toán) và mời user nói nhu cầu. Giọng tự nhiên, không robot. KHÔNG bắt buộc liệt kê chi tiết 4 phase cho một lời chào."
     }
   ],
   "Em Bé Săn Deal": [
