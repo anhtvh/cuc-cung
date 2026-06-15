@@ -492,7 +492,11 @@ function turnAddStep(assistantDiv, html, cls = "") {
 // Không phụ thuộc URL ngoài (tránh model bịa link); file nằm ngay trong trình duyệt.
 function renderArtifactDownload(assistantDiv, data) {
   if (!assistantDiv || !data || !data.content_b64) return;
-  if (assistantDiv.querySelector(".artifact-card")) return;  // chống trùng (event chỉ bắn 1 lần)
+  const name = data.filename || "project.zip";
+  // Dedup THEO filename — một lượt có thể đóng gói NHIỀU file (vd nhiều partner),
+  // mỗi file 1 event → mỗi file phải có nút riêng. Chỉ chặn trùng đúng file đó.
+  const dedupKey = name.replace(/[^a-zA-Z0-9_.-]/g, "_");
+  if (assistantDiv.querySelector(`.artifact-card[data-file="${dedupKey}"]`)) return;
   let url;
   try {
     const bin = atob(data.content_b64);
@@ -500,10 +504,10 @@ function renderArtifactDownload(assistantDiv, data) {
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     url = URL.createObjectURL(new Blob([bytes], { type: "application/zip" }));
   } catch (e) { return; }
-  const name = data.filename || "project.zip";
   const size = data.size_kb ? ` (${data.size_kb} KB)` : "";
   const card = document.createElement("div");
   card.className = "artifact-card";
+  card.dataset.file = dedupKey;
   card.style.cssText = "margin-top:10px";
   const a = document.createElement("a");
   a.href = url;
@@ -1964,6 +1968,10 @@ function renderInline(s) {
     return `\u0001${codes.length - 1}\u0001`;
   });
   h = esc(h);
+  // Link tải BỊA kiểu local (sandbox:/file:/tmp/var) → bỏ URL chết, chỉ giữ text.
+  // File ZIP thật đến qua nút "📦 Tải" (artifact button), không qua link trong văn bản.
+  h = h.replace(/\[([^\]]+)\]\((?:sandbox:|file:)[^\s)]*\)/g, "$1");
+  h = h.replace(/\[([^\]]+)\]\((?:\/tmp\/|\/var\/|\.\/)[^\s)]*\)/g, "$1");
   // Link [text](url) — chỉ http/https
   h = h.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
     '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');

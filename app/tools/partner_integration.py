@@ -513,7 +513,10 @@ class PartnerIntegrationProvider:
                     "size_kb": round(zip_path.stat().st_size / 1024, 1),
                     "note": (
                         "Project hoàn chỉnh (hạ tầng template + code sinh ra). "
-                        "Gửi user link download_url. Đây là chế độ thử nghiệm — chưa qua build/test thật."
+                        "Hệ thống ĐÃ TỰ gửi file ZIP về user kèm nút tải ngay dưới tin nhắn — "
+                        "TUYỆT ĐỐI KHÔNG in/bịa bất kỳ link tải nào (không markdown link, không sandbox:/tmp/, "
+                        "không download_url). Chỉ cần thông báo tên file zip_name. "
+                        "Đây là chế độ thử nghiệm — chưa qua build/test thật."
                     ),
                 },
                 ensure_ascii=False,
