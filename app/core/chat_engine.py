@@ -4,6 +4,7 @@ Engine yield event dict {"event": str, "data": dict} — API layer chỉ việc
 serialize thành SSE, không chứa logic.
 """
 
+import json
 import logging
 import re
 import time
@@ -14,6 +15,7 @@ from typing import Any, Iterator
 from app.core.models import MASTER_AGENT_NAME, Agent, ChatMessage, ItemStatus
 from app.llm.base import Done, TextDelta, ToolCallEvent, ToolDef, ToolExecutor, ToolResult, ToolStartEvent
 from app.tools.base import to_display
+from app.tools.partner_integration import artifact_b64 as _artifact_b64
 
 log = logging.getLogger(__name__)
 
@@ -759,6 +761,24 @@ class ChatEngine:
                             "output": ev.result.display_output,
                         },
                     }
+                    # Flow 5: package_project xong → GỬI THẲNG file ZIP về user qua kênh chat
+                    # (base64), KHÔNG phụ thuộc model in link (model hay bịa URL). Frontend dựng
+                    # Blob + nút tải từ event này. conv_id = nơi tool đã ghi artifact.
+                    if _upia_exp and not ev.result.is_error and ev.name.endswith("__package_project"):
+                        try:
+                            _meta = json.loads(ev.result.content)
+                            if _meta.get("packaged") and _meta.get("zip_name"):
+                                _b64 = _artifact_b64(conv_id, _meta["zip_name"])
+                                if _b64:
+                                    yield {"event": "artifact", "data": {
+                                        "filename": _meta["zip_name"],
+                                        "size_kb": _meta.get("size_kb"),
+                                        "content_b64": _b64,
+                                    }}
+                                else:
+                                    log.warning("artifact quá lớn hoặc thiếu file: %s", _meta.get("zip_name"))
+                        except Exception as e:  # noqa: BLE001 — lỗi gửi file không được chặn lượt chat
+                            log.warning("emit artifact lỗi: %s", e)
                     if ev.result.delegate_to:
                         # L-01: emit text trước khi delegate để user không thấy blank.
                         # Không ghi vào assistant_text — tránh lưu câu UI này vào memory.

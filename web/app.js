@@ -488,6 +488,35 @@ function turnAddStep(assistantDiv, html, cls = "") {
   scrollBottom();
 }
 
+// Flow 5: nhận file ZIP (base64) backend gửi qua kênh chat → tạo Blob + nút tải trực tiếp.
+// Không phụ thuộc URL ngoài (tránh model bịa link); file nằm ngay trong trình duyệt.
+function renderArtifactDownload(assistantDiv, data) {
+  if (!assistantDiv || !data || !data.content_b64) return;
+  let url;
+  try {
+    const bin = atob(data.content_b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    url = URL.createObjectURL(new Blob([bytes], { type: "application/zip" }));
+  } catch (e) { return; }
+  const name = data.filename || "project.zip";
+  const size = data.size_kb ? ` (${data.size_kb} KB)` : "";
+  const card = document.createElement("div");
+  card.className = "artifact-card";
+  card.style.cssText = "margin-top:10px";
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.className = "artifact-dl";
+  a.style.cssText = "display:inline-flex;align-items:center;gap:8px;padding:10px 16px;" +
+    "background:#0068FF;color:#fff;border-radius:10px;font-weight:600;text-decoration:none";
+  a.textContent = `📦 Tải ${name}${size}`;
+  card.appendChild(a);
+  assistantDiv.querySelector(".msg-content").appendChild(card);
+  a.click();  // tự kích hoạt tải; nút vẫn còn để tải lại
+  scrollBottom();
+}
+
 function finalizeTurnProcess(assistantDiv) {
   const proc = assistantDiv && assistantDiv.querySelector(".turn-process");
   if (!proc) return;
@@ -608,6 +637,13 @@ async function _triggerAgentAutoStart(agentName, slug) {
         } else if (ev === "tool_start") {
           // Tool đang chạy (vd websearch ~10s) — hiện loading để user biết đang xử lý.
           if (_live()) showTyping();
+        } else if (ev === "artifact") {
+          // Flow 5: backend gửi THẲNG file ZIP (base64) qua kênh chat — dựng Blob + nút tải,
+          // không cần URL ngoài (tránh model bịa link).
+          if (_live()) {
+            if (!assistantDiv) assistantDiv = addMsg("assistant", "", "@" + agentName);
+            renderArtifactDownload(assistantDiv, data);
+          }
         } else if (ev === "done") {
           // Lượt xong → ẩn typing ngay (backend còn ghi memory trước khi đóng stream).
           if (_live()) { hideTyping(); finalizeTurnProcess(assistantDiv); }

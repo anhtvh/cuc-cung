@@ -11,6 +11,7 @@ Nếu sau này muốn codegen THẬT: thay nhóm tool mock bằng MCP server out
 (go runner + glab) qua gateway — cùng interface `ToolProvider`, không đổi flow.
 """
 
+import base64
 import json
 import logging
 import random
@@ -133,6 +134,15 @@ def _rewrite_module_path(staging: Path, partner: str) -> None:
                 continue
             if _TEMPLATE_MODULE_SEGMENT in text:
                 p.write_text(text.replace(_TEMPLATE_MODULE_SEGMENT, new_segment), encoding="utf-8")
+
+
+def artifact_b64(conversation_id: str | None, filename: str, max_bytes: int = 6_000_000) -> str | None:
+    """Đọc file ZIP đã đóng gói → base64 để gửi THẲNG về user qua kênh chat (không cần URL).
+    Trả None nếu không có file hoặc vượt giới hạn (tránh nhồi SSE quá lớn)."""
+    p = _artifact_dir(conversation_id) / Path(filename).name
+    if not p.is_file() or p.stat().st_size > max_bytes:
+        return None
+    return base64.b64encode(p.read_bytes()).decode()
 
 
 def _build_zip(conversation_id: str | None, partner: str) -> tuple[Path, int]:

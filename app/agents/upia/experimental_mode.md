@@ -31,17 +31,19 @@ dưới dạng file ZIP, trung thực về việc CHƯA chạy các bước mô 
   thiếu rồi gọi lại.
 
 ## 4. Bàn giao + disclaimer (BẮT BUỘC ở câu trả lời cuối)
-Sau khi `package_project` trả `download_url`, trình bày cho user đúng tinh thần:
+BẮT BUỘC gọi tool `package_project` để đóng gói — hệ thống sẽ **tự gửi file ZIP về user**
+(hiện nút tải ngay dưới tin nhắn). **TUYỆT ĐỐI KHÔNG tự bịa/đặt link tải** (không có
+`http://…`, không `example.com`); đừng dán URL nào — file đã được gửi thẳng qua kênh chat.
 
-> ✅ Đã dựng xong project **provider-{partner}** — tải tại: **{download_url}**
+Sau khi `package_project` chạy xong, chỉ cần trình bày đúng tinh thần:
+
+> ✅ Đã dựng xong project **provider-{partner}** — file ZIP đính kèm bên dưới, bấm để tải.
 >
 > ⚠️ **Lưu ý — đây là CHẾ ĐỘ THỬ NGHIỆM.** Bản giao là source code hoàn chỉnh (hạ tầng
 > template + adapter sinh tự động). **Chưa bao gồm**: vet/build/test, tạo Merge Request,
 > merge/deploy sandbox, tra cứu hoá đơn — các bước này hiện chỉ là *mô phỏng* nên được
 > lược bỏ để tránh kết quả giả. Vui lòng tự `go build` / `go test` và mở MR trong môi
 > trường thật trước khi dùng.
-
-Luôn kèm link `download_url` và đoạn cảnh báo trên ở câu trả lời cuối.
 
 ## 5. Tài liệu lớn — RAG + sinh từng mảnh nhỏ (tránh timeout)
 **Nếu tài liệu đối tác đã được nạp vào kho tri thức** (attachment hiển thị dòng "…đã được nạp
