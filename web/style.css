@@ -541,6 +541,8 @@ main { flex: 1; overflow: hidden; display: flex; min-height: 0; position: relati
 .wcard-icon .ic { font-size: 16px; }
 .wcard-name { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
 .wcard-hint { font-size: 12px; color: var(--tx2); line-height: 1.4; }
+/* #8: thẻ mẫu agent trong tin nhắn — tái dùng .wcard, chỉ căn trái + tách lề trên */
+.tpl-grid { justify-content: flex-start; margin-top: 10px; }
 
 /* bubbles */
 .msg {

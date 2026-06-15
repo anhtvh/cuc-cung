@@ -10,6 +10,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from app.builder.templates import get_template, list_template_cards
 from app.core.governance import Governance, GovernanceError
 from app.core.models import MASTER_AGENT_NAME, Agent, ItemStatus, Skill, Visibility
 from app.llm.base import ToolDef, ToolResult
@@ -263,6 +264,30 @@ MASTER_TOOLS: list[ToolDef] = [
             "required": ["salutation"],
         },
     ),
+    ToolDef(
+        name="list_templates",
+        description=(
+            "Liệt kê các MẪU agent dựng sẵn (tra cứu nội bộ, soạn báo cáo, CSKH/FAQ...). "
+            "Gọi khi user muốn tạo agent nhưng nhu cầu khớp một mẫu phổ biến — để rút ngắn "
+            "phỏng vấn. UI tự hiện thẻ mẫu bấm chọn được từ kết quả tool này."
+        ),
+        input_schema={"type": "object", "properties": {}},
+    ),
+    ToolDef(
+        name="apply_template",
+        description=(
+            "Lấy bản nháp đầy đủ của một mẫu (persona + skill draft + connector gợi ý) theo key. "
+            "KHÔNG tạo gì — chỉ trả nội dung để trình user xem ở bước draft. Sau khi user chốt + "
+            "ĐẶT TÊN RIÊNG, mới gọi create_skill/create_agent/attach_skill như thường."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "key": {"type": "string", "description": "Mã mẫu (lấy từ list_templates)."},
+            },
+            "required": ["key"],
+        },
+    ),
 ]
 
 
@@ -361,6 +386,36 @@ class MasterToolset:
         return _ok({"salutation": value, "note": f"Đã lưu — từ giờ gọi user là '{value}'."})
 
     # --- read ---
+
+    def _h_list_templates(self, args: dict) -> ToolResult:
+        # Read-only: trả danh sách thẻ nhẹ (key/title/icon/description). ChatEngine bắt kết quả
+        # tool này để emit event `templates` → UI dựng thẻ bấm chọn.
+        return _ok({"templates": list_template_cards()})
+
+    def _h_apply_template(self, args: dict) -> ToolResult:
+        # Read-only: KHÔNG ghi registry. Chỉ trả blueprint để Master trình draft cho user.
+        key = str(args.get("key", "")).strip()
+        tpl = get_template(key)
+        if tpl is None:
+            return ToolResult(
+                content=f"Không có mẫu '{key}'. Gọi list_templates để xem các mẫu hợp lệ.",
+                is_error=True,
+            )
+        return _ok({
+            "key": tpl.key,
+            "title": tpl.title,
+            "persona_template": tpl.persona_template,
+            "suggested_connectors": tpl.suggested_connectors,
+            "needs_knowledge": tpl.needs_knowledge,
+            "skill_drafts": [s.model_dump() for s in tpl.skill_drafts],
+            "acceptance_cases": [c.model_dump() for c in tpl.acceptance_cases],
+            "note": (
+                "Đây là BẢN NHÁP từ mẫu — chưa tạo gì. Trình persona + skill cho user xem, "
+                "HỎI user đặt TÊN RIÊNG cho agent (tránh trùng), chỉnh sửa theo góp ý, rồi mới "
+                "create_skill (đặt tên <tên-agent>-<name_suffix>) → create_agent → attach_skill. "
+                "Nếu needs_knowledge=true, nhắc user có thể upload tài liệu nội bộ cho agent."
+            ),
+        })
 
     def _h_fetch_url(self, args: dict) -> ToolResult:
         import re

@@ -448,6 +448,8 @@ function renderSubAgentCard(agentName, output, isError) {
 const TOOL_LABELS = {
   "web-search.search": `${svgIcon("search")} Tìm kiếm web`,
   "web-search.fetch":  `${svgIcon("globe")} Đọc trang`,
+  "list_templates":    `${svgIcon("sparkle")} Xem mẫu agent dựng sẵn`,
+  "apply_template":    `${svgIcon("sparkle")} Lấy mẫu agent`,
 };
 
 function toolStepHtml(data) {
@@ -521,6 +523,32 @@ function renderArtifactDownload(assistantDiv, data) {
   // .msg-content.innerHTML không xoá mất nút này.
   assistantDiv.appendChild(card);
   try { a.click(); } catch (_) {}  // best-effort auto-tải (trình duyệt có thể chặn nếu thiếu user-gesture → user tự bấm nút)
+  scrollBottom();
+}
+
+/* ─── Template cards (#8 — gợi ý mẫu agent) ───────────────── */
+function renderTemplateCards(assistantDiv, data) {
+  if (!assistantDiv || !data || !Array.isArray(data.templates) || !data.templates.length) return;
+  // Idempotent: 1 lượt chỉ render 1 lần (tránh nhân đôi khi re-render/history).
+  if (assistantDiv.querySelector(".tpl-grid")) return;
+  // Tái dùng pattern thẻ welcome (.welcome-grid + .wcard) cho đồng bộ design.
+  const grid = document.createElement("div");
+  grid.className = "welcome-grid tpl-grid";
+  grid.innerHTML = data.templates.map((t) => `
+    <button class="wcard" data-key="${esc(t.key)}" data-title="${esc(t.title)}">
+      <span class="wcard-icon">${svgIcon(t.icon || "bot")}</span>
+      <div class="wcard-name">${esc(t.title)}</div>
+      <div class="wcard-hint">${esc(t.description || "")}</div>
+    </button>`).join("");
+  grid.querySelectorAll(".wcard").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      // Chặn gửi chồng khi lượt trước đang chạy (thẻ bỏ qua nút gửi đã disable).
+      if (state.streaming.has(state.activeConvId)) return;
+      $("#chat-input").value = `Mình muốn dùng mẫu "${btn.dataset.title}" (mã: ${btn.dataset.key}).`;
+      submitChat();
+    }));
+  // Append NGOÀI .msg-content — để model ghi text cuối (overwrite .msg-content) không xoá thẻ.
+  assistantDiv.appendChild(grid);
   scrollBottom();
 }
 
@@ -650,6 +678,12 @@ async function _triggerAgentAutoStart(agentName, slug) {
           if (_live()) {
             if (!assistantDiv) assistantDiv = addMsg("assistant", "", "@" + agentName);
             renderArtifactDownload(assistantDiv, data);
+          }
+        } else if (ev === "templates") {
+          // #8: Master gợi ý mẫu agent → thẻ bấm chọn ngay trong tin nhắn.
+          if (_live()) {
+            if (!assistantDiv) assistantDiv = addMsg("assistant", "", "@" + agentName);
+            renderTemplateCards(assistantDiv, data);
           }
         } else if (ev === "done") {
           // Lượt xong → ẩn typing ngay (backend còn ghi memory trước khi đóng stream).
@@ -1357,6 +1391,16 @@ $("#chat-form").addEventListener("submit", async (e) => {
               assistantDiv = addMsg("assistant", "", tag);
             }
             renderArtifactDownload(assistantDiv, data);
+          }
+
+        } else if (ev === "templates") {
+          // #8: Master gợi ý mẫu agent → thẻ bấm chọn ngay trong tin nhắn (kênh chat chính).
+          if (_live()) {
+            if (!assistantDiv) {
+              const tag = state.stickyAgent === "master" ? "Cục cưng" : "@" + state.stickyAgent;
+              assistantDiv = addMsg("assistant", "", tag);
+            }
+            renderTemplateCards(assistantDiv, data);
           }
 
         } else if (ev === "delegate") {

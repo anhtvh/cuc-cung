@@ -834,6 +834,15 @@ class ChatEngine:
                     # file về user qua kênh chat (base64), KHÔNG phụ thuộc model in link (model hay
                     # bịa URL). Frontend dựng Blob + nút tải từ event này. conv_id = nơi tool ghi
                     # artifact. Generalize: reader chọn theo server prefix (_ARTIFACT_READERS).
+                    # Master gợi ý mẫu agent → emit thẻ bấm chọn (UI dựng từ event này, KHÔNG
+                    # nhồi vào text). Tên tool master không có prefix `__` → so khớp trực tiếp.
+                    if ev.name == "list_templates" and not ev.result.is_error:
+                        try:
+                            _tpl_payload = json.loads(ev.result.content)
+                            if _tpl_payload.get("templates"):
+                                yield {"event": "templates", "data": {"templates": _tpl_payload["templates"]}}
+                        except Exception as e:  # noqa: BLE001 — lỗi gợi ý không chặn lượt chat
+                            log.warning("emit templates lỗi: %s", e)
                     _art = _extract_artifact_meta(ev)
                     if _art:
                         _server = ev.name.partition("__")[0]
