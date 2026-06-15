@@ -492,6 +492,7 @@ function turnAddStep(assistantDiv, html, cls = "") {
 // Không phụ thuộc URL ngoài (tránh model bịa link); file nằm ngay trong trình duyệt.
 function renderArtifactDownload(assistantDiv, data) {
   if (!assistantDiv || !data || !data.content_b64) return;
+  if (assistantDiv.querySelector(".artifact-card")) return;  // chống trùng (event chỉ bắn 1 lần)
   let url;
   try {
     const bin = atob(data.content_b64);
@@ -509,11 +510,13 @@ function renderArtifactDownload(assistantDiv, data) {
   a.download = name;
   a.className = "artifact-dl";
   a.style.cssText = "display:inline-flex;align-items:center;gap:8px;padding:10px 16px;" +
-    "background:#0068FF;color:#fff;border-radius:10px;font-weight:600;text-decoration:none";
+    "background:#0068FF;color:#fff;border-radius:10px;font-weight:600;text-decoration:none;cursor:pointer";
   a.textContent = `📦 Tải ${name}${size}`;
   card.appendChild(a);
-  assistantDiv.querySelector(".msg-content").appendChild(card);
-  a.click();  // tự kích hoạt tải; nút vẫn còn để tải lại
+  // Append vào message div (NGOÀI .msg-content) — để render text cuối của model ghi đè
+  // .msg-content.innerHTML không xoá mất nút này.
+  assistantDiv.appendChild(card);
+  try { a.click(); } catch (_) {}  // best-effort auto-tải (trình duyệt có thể chặn nếu thiếu user-gesture → user tự bấm nút)
   scrollBottom();
 }
 
@@ -1340,6 +1343,17 @@ $("#chat-form").addEventListener("submit", async (e) => {
             refreshAgentsCache();
           }
           showTyping();
+
+        } else if (ev === "artifact") {
+          // Flow 5: Upia đóng gói xong → backend gửi THẲNG file ZIP (base64) qua kênh chat.
+          // Dựng Blob + nút tải ngay dưới tin nhắn (không phụ thuộc URL ngoài / model bịa link).
+          if (_live()) {
+            if (!assistantDiv) {
+              const tag = state.stickyAgent === "master" ? "Cục cưng" : "@" + state.stickyAgent;
+              assistantDiv = addMsg("assistant", "", tag);
+            }
+            renderArtifactDownload(assistantDiv, data);
+          }
 
         } else if (ev === "delegate") {
           // Rời hội thoại → bỏ qua auto-delegate (không hijack hội thoại đang xem).
