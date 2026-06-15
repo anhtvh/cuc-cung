@@ -86,6 +86,10 @@ class UsageRow(Base):
     agent_name: Mapped[str | None] = mapped_column(Text)
     input_tokens: Mapped[int | None] = mapped_column(Integer)
     output_tokens: Mapped[int | None] = mapped_column(Integer)
+    # I-05 observability: đo độ trễ + số tool-call + lý do dừng mỗi lượt (nullable cho row cũ).
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    tool_calls: Mapped[int | None] = mapped_column(Integer)
+    stop_reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[str | None] = mapped_column(Text)
 
 
@@ -368,13 +372,24 @@ class SqlUsageRepo:
             names = [n for n in names if n not in exclude_names]
         return names[:n]
 
-    def log(self, agent_name: str, input_tokens: int, output_tokens: int) -> None:
+    def log(
+        self,
+        agent_name: str,
+        input_tokens: int,
+        output_tokens: int,
+        latency_ms: int | None = None,
+        tool_calls: int = 0,
+        stop_reason: str | None = None,
+    ) -> None:
         with Session(self._engine) as s:
             s.add(
                 UsageRow(
                     agent_name=agent_name,
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
+                    latency_ms=latency_ms,
+                    tool_calls=tool_calls,
+                    stop_reason=stop_reason,
                     created_at=now_iso(),
                 )
             )
@@ -392,7 +407,7 @@ class SqlUsageRepo:
         return {r.agent_name: r.cnt for r in rows}
 
     def stats(self) -> list[dict]:
-        """Tổng hợp usage theo agent: số lần gọi, token dùng."""
+        """Tổng hợp usage theo agent: số lần gọi, token, độ trễ trung bình, tổng tool-call (I-05)."""
         with Session(self._engine) as s:
             q = (
                 select(
@@ -400,6 +415,8 @@ class SqlUsageRepo:
                     func.count().label("calls"),
                     func.sum(UsageRow.input_tokens).label("in_tokens"),
                     func.sum(UsageRow.output_tokens).label("out_tokens"),
+                    func.avg(UsageRow.latency_ms).label("avg_latency"),
+                    func.sum(UsageRow.tool_calls).label("tool_calls"),
                 )
                 .where(UsageRow.agent_name.is_not(None))
                 .group_by(UsageRow.agent_name)
@@ -413,9 +430,24 @@ class SqlUsageRepo:
                 "in_tokens": r.in_tokens or 0,
                 "out_tokens": r.out_tokens or 0,
                 "total_tokens": (r.in_tokens or 0) + (r.out_tokens or 0),
+                # round → int ms cho UI; None (row cũ chưa có latency) → 0.
+                "avg_latency_ms": round(r.avg_latency) if r.avg_latency is not None else 0,
+                "tool_calls": r.tool_calls or 0,
             }
             for r in rows
         ]
+
+    def stop_reason_breakdown(self) -> dict[str, int]:
+        """Phân bố stop_reason toàn hệ thống (I-05) — soi tỉ lệ lỗi: timeout/api_error/max_tool_rounds."""
+        with Session(self._engine) as s:
+            q = (
+                select(UsageRow.stop_reason, func.count().label("cnt"))
+                .where(UsageRow.stop_reason.is_not(None))
+                .group_by(UsageRow.stop_reason)
+                .order_by(func.count().desc())
+            )
+            rows = s.execute(q).all()
+        return {r.stop_reason: r.cnt for r in rows}
 
     def distinct_users(self) -> int:
         """Số user unique đã dùng hệ thống (qua conv_meta — độc lập memory backend)."""

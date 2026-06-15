@@ -20,6 +20,7 @@ from app.llm.base import (
     ToolDef,
     ToolExecutor,
     ToolResult,
+    execute_tools_maybe_parallel,
     parse_json_loose,
 )
 
@@ -95,6 +96,7 @@ class AnthropicMaaSClient:
         model: str | None = None,
         sla_seconds: float | None = _SLA_DEFAULT,
         stream: bool = True,
+        parallel_tools: bool = True,
     ) -> Iterator[LLMEvent]:
         """Vòng lặp tool-use (Flow 2/3): stream → tool_use → thực thi → tool_result → lặp.
 
@@ -105,6 +107,9 @@ class AnthropicMaaSClient:
         bug MaaS/minimax: tool_use input LỚN (vd content skill markdown ~15k ký tự) bị MẤT khi
         streaming (block.input rỗng → KeyError 'name'); non-streaming trả input đầy đủ. Args nhỏ
         (websearch query, url) stream bình thường nên Flow 3 vẫn dùng stream=True.
+
+        parallel_tools=True (Flow 3): ≥2 tool_use/vòng chạy song song (I-04). Đặt False cho
+        master builder vì các tool ghi registry có thứ tự phụ thuộc (create_skill → attach_skill).
         """
         # Override SLA per-call: sentinel = giữ default client; None = tắt cắt-tool; số = ngưỡng riêng.
         effective_sla = self._sla_seconds if sla_seconds is _SLA_DEFAULT else sla_seconds
@@ -188,9 +193,9 @@ class AnthropicMaaSClient:
                                 _round, self._max_tokens)
                 break
 
-            # Serialize lại content block thủ công — chỉ giữ field API cần.
+            # Serialize content + tách tool_use blocks (giữ thứ tự gốc để event deterministic).
             assistant_content: list[dict[str, Any]] = []
-            tool_results: list[dict[str, Any]] = []
+            tool_use_blocks: list[Any] = []
             for block in final.content:
                 if block.type == "text":
                     assistant_content.append({"type": "text", "text": block.text})
@@ -198,18 +203,31 @@ class AnthropicMaaSClient:
                     assistant_content.append(
                         {"type": "tool_use", "id": block.id, "name": block.name, "input": block.input}
                     )
-                    # Báo UI tool sắp chạy (signal trong lúc execute — websearch/fetch chậm).
-                    yield ToolStartEvent(name=block.name, input=block.input or {})
-                    result = execute(block.name, block.input or {})
-                    yield ToolCallEvent(name=block.name, input=block.input or {}, result=result)
-                    tool_results.append(
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": result.content,
-                            "is_error": result.is_error,
-                        }
-                    )
+                    tool_use_blocks.append(block)
+
+            # Báo UI tất cả tool sắp chạy TRƯỚC (websearch/fetch chậm) — khi chạy song song
+            # UI thấy cả 2 cùng "đang chạy".
+            for block in tool_use_blocks:
+                yield ToolStartEvent(name=block.name, input=block.input or {})
+
+            # I-04: ≥2 tool_use/vòng → chạy song song (parallel_tools). Giữ thứ tự input.
+            results = execute_tools_maybe_parallel(
+                execute,
+                [(b.name, b.input or {}) for b in tool_use_blocks],
+                parallel_tools,
+            )
+
+            tool_results: list[dict[str, Any]] = []
+            for block, result in zip(tool_use_blocks, results):
+                yield ToolCallEvent(name=block.name, input=block.input or {}, result=result)
+                tool_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": result.content,
+                        "is_error": result.is_error,
+                    }
+                )
             convo.append({"role": "assistant", "content": assistant_content})
             convo.append({"role": "user", "content": tool_results})
 

@@ -45,10 +45,13 @@ class Settings(BaseSettings):
     llm_request_timeout_seconds: int = 45
     # Router classify là call ngắn, chạy TRƯỚC khi stream — timeout ngắn để fallback master nhanh.
     router_timeout_seconds: int = 15
-    # I-06: giới hạn số call /chat per user per session (0 = không giới hạn — contest default).
+    # I-06: giới hạn số call /chat per user trong 1 "session window" (0 = không giới hạn — contest default).
     # Production nên set ≥1 để tránh credit cạn do 1 user trigger vô tận master tool loop.
-    # CHƯA WIRE vào /chat — cần session state riêng, rate_limit_per_minute đã cover phần lớn use-case.
+    # ĐÃ WIRE: dùng SlidingWindowRateLimiter riêng với cửa sổ chat_session_window_seconds (per user_id).
+    # Không có auth-session store nên "session" = cửa sổ thời gian; bổ trợ cho rate_limit_per_minute (chặn burst).
     max_chat_calls_per_session: int = 0
+    # Độ dài cửa sổ "session" cho max_chat_calls_per_session (giây). Mặc định 1h.
+    chat_session_window_seconds: int = 3600
     # Sliding-window rate limit cho /chat: số lần gọi tối đa mỗi phút per user (0 = disabled).
     # Production khuyến nghị 20; contest để 0 để không ảnh hưởng demo.
     rate_limit_per_minute: int = 0

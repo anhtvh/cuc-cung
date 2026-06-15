@@ -19,6 +19,7 @@ from app.llm.base import (
     ToolDef,
     ToolExecutor,
     ToolStartEvent,
+    execute_tools_maybe_parallel,
     parse_json_loose,
 )
 
@@ -69,6 +70,7 @@ class OpenAIMaaSClient:
         model: str | None = None,
         sla_seconds: float | None = None,  # parity với AnthropicMaaSClient; Plan B chưa xử lý SLA
         stream: bool = True,  # parity; Plan B chưa tách stream/non-stream
+        parallel_tools: bool = True,  # I-04: ≥2 tool_call/vòng chạy song song
     ) -> Iterator[LLMEvent]:
         api_tools = [
             {
@@ -147,13 +149,26 @@ class OpenAIMaaSClient:
             if content:
                 assistant_msg["content"] = content
             convo.append(assistant_msg)
+            # Parse args từng tool_call (giữ thứ tự để map tool_call_id đúng).
+            parsed: list[tuple[dict[str, Any], dict[str, Any]]] = []
             for tc_dict in tool_calls_list:
                 try:
                     args = json.loads(tc_dict["function"]["arguments"] or "{}")
                 except json.JSONDecodeError:
                     args = {}
+                parsed.append((tc_dict, args))
+
+            for tc_dict, args in parsed:
                 yield ToolStartEvent(name=tc_dict["function"]["name"], input=args)
-                result = execute(tc_dict["function"]["name"], args)
+
+            # I-04: ≥2 tool_call/vòng → chạy song song (parallel_tools). Giữ thứ tự input.
+            results = execute_tools_maybe_parallel(
+                execute,
+                [(tc_dict["function"]["name"], args) for tc_dict, args in parsed],
+                parallel_tools,
+            )
+
+            for (tc_dict, args), result in zip(parsed, results):
                 yield ToolCallEvent(name=tc_dict["function"]["name"], input=args, result=result)
                 tool_content = result.content if not result.is_error else f"LỖI: {result.content}"
                 convo.append({"role": "tool", "tool_call_id": tc_dict["id"], "content": tool_content})

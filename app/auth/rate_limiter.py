@@ -43,6 +43,9 @@ class SlidingWindowRateLimiter:
 
 
 _limiter: SlidingWindowRateLimiter | None = None
+# Limiter thứ 2: cap số call /chat per user trong 1 "session window" (I-06, chống cháy credit).
+# Tách khỏi _limiter (chặn burst/phút) — window dài hơn (mặc định 1h).
+_session_limiter: SlidingWindowRateLimiter | None = None
 
 
 def init_limiter(max_calls: int, window_seconds: int = 60) -> SlidingWindowRateLimiter:
@@ -56,3 +59,16 @@ def get_limiter() -> SlidingWindowRateLimiter:
     if _limiter is None:
         _limiter = SlidingWindowRateLimiter(max_calls=0)
     return _limiter
+
+
+def init_session_limiter(max_calls: int, window_seconds: int = 3600) -> SlidingWindowRateLimiter:
+    global _session_limiter
+    _session_limiter = SlidingWindowRateLimiter(max_calls, window_seconds)
+    return _session_limiter
+
+
+def get_session_limiter() -> SlidingWindowRateLimiter:
+    global _session_limiter
+    if _session_limiter is None:
+        _session_limiter = SlidingWindowRateLimiter(max_calls=0)
+    return _session_limiter

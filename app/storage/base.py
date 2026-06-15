@@ -40,6 +40,14 @@ class SkillRepo(Protocol):
 
 
 class UsageRepo(Protocol):
-    """Theo dõi credit từ ngày 1 (rủi ro #3)."""
+    """Theo dõi credit từ ngày 1 (rủi ro #3) + observability (I-05)."""
 
-    def log(self, agent_name: str, input_tokens: int, output_tokens: int) -> None: ...
+    def log(
+        self,
+        agent_name: str,
+        input_tokens: int,
+        output_tokens: int,
+        latency_ms: int | None = None,
+        tool_calls: int = 0,
+        stop_reason: str | None = None,
+    ) -> None: ...

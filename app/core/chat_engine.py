@@ -6,6 +6,7 @@ serialize thành SSE, không chứa logic.
 
 import logging
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterator
 
@@ -524,6 +525,9 @@ class ChatEngine:
                 return _base(name, args)
 
         assistant_text: list[str] = []
+        # I-05 observability: đo độ trễ lượt + đếm tool-call để ghi usage_log.
+        turn_start = time.monotonic()
+        tool_call_count = 0
         try:
             if tools:
                 # Master builder (Flow 2, đã đăng nhập): cần SLA dài hơn để kịp gọi create_*
@@ -534,6 +538,9 @@ class ChatEngine:
                     # Non-stream cho builder: tool_use input lớn (create_skill/create_agent) bị mất
                     # khi streaming qua MaaS/minimax — xem chat_with_tools.
                     tool_kwargs["stream"] = False
+                    # I-04: builder tool ghi registry có thứ tự phụ thuộc (create_skill → attach_skill)
+                    # → KHÔNG parallel hóa. Flow 3 (read-only tools) dùng default True.
+                    tool_kwargs["parallel_tools"] = False
                 events = self._llm.chat_with_tools(
                     system, messages, tools, execute, **tool_kwargs
                 )
@@ -549,6 +556,7 @@ class ChatEngine:
                     # Signal "tool đang chạy" — UI hiện loading trong lúc execute (websearch chậm).
                     yield {"event": "tool_start", "data": {"name": to_display(ev.name), "input": ev.input}}
                 elif isinstance(ev, ToolCallEvent):
+                    tool_call_count += 1
                     yield {
                         "event": "tool",
                         "data": {
@@ -574,7 +582,12 @@ class ChatEngine:
                         # (tool result "Đang chuyển về Master." sẽ khiến model sinh text thừa)
                         return
                 elif isinstance(ev, Done):
-                    self._usage.log(agent.name, ev.input_tokens, ev.output_tokens)
+                    self._usage.log(
+                        agent.name, ev.input_tokens, ev.output_tokens,
+                        latency_ms=int((time.monotonic() - turn_start) * 1000),
+                        tool_calls=tool_call_count,
+                        stop_reason=ev.stop_reason,
+                    )
                     yield {
                         "event": "done",
                         "data": {

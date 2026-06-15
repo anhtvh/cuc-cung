@@ -93,6 +93,30 @@ class LLMClient(Protocol):
     ) -> dict[str, Any]: ...
 
 
+def execute_tools_maybe_parallel(
+    execute: ToolExecutor,
+    calls: list[tuple[str, dict[str, Any]]],
+    parallel: bool,
+) -> list[ToolResult]:
+    """Thực thi list (tool_name, args) → list[ToolResult], GIỮ NGUYÊN thứ tự input (I-04).
+
+    Khi model trả ≥2 tool_use trong 1 vòng (vd websearch + fetch) và parallel=True → chạy
+    song song qua ThreadPoolExecutor (tool IO-bound: HTTP search/fetch/knowledge) → wall-time
+    = max thay vì tổng. parallel=False (master builder) giữ tuần tự để bảo toàn thứ tự ghi
+    registry (create_skill → attach_skill...).
+
+    Lỗi raise trong thread sẽ nổi lại tại f.result() — cùng hành vi với đường tuần tự cũ
+    (caller ở chat stream bắt và trả fallback), không nuốt lỗi.
+    """
+    if not parallel or len(calls) < 2:
+        return [execute(name, args) for name, args in calls]
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=len(calls)) as pool:
+        futures = [pool.submit(execute, name, args) for name, args in calls]
+        return [f.result() for f in futures]
+
+
 def parse_json_loose(text: str) -> dict[str, Any]:
     """Parse JSON từ output model — chịu được code fence / text thừa quanh JSON."""
     import json

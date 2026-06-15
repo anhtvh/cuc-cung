@@ -24,7 +24,7 @@ from app.api import auth as auth_api
 from app.api.deps import Container
 from app.auth.middleware import UserIdMiddleware
 from app.auth.password_auth import hash_password
-from app.auth.rate_limiter import init_limiter
+from app.auth.rate_limiter import init_limiter, init_session_limiter
 from app.config import PROJECT_ROOT, Settings, load_settings
 from app.core.agent_test import AgentTester
 from app.core.chat_engine import ChatEngine
@@ -156,6 +156,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     knowledge = make_knowledge_service(settings, agent_docs)
 
     init_limiter(settings.rate_limit_per_minute)
+    init_session_limiter(settings.max_chat_calls_per_session, settings.chat_session_window_seconds)
     llm = make_llm(settings)
     router_llm = make_router_llm(settings)
     # web-search: swap gateway ↔ local tùy env — tool name giữ nguyên "web-search"

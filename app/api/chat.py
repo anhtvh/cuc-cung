@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.api.deps import Container, get_container, get_is_guest, get_user_id
-from app.auth.rate_limiter import get_limiter
+from app.auth.rate_limiter import get_limiter, get_session_limiter
 from app.builder.master import GUEST_BUILDER_NOTE, GUEST_MASTER_TOOLS, MASTER_TOOLS, MasterToolset
 from app.core.models import MASTER_AGENT_NAME
 
@@ -47,6 +47,9 @@ def chat(
         raise HTTPException(status_code=422, detail="message trống")
     if not get_limiter().is_allowed(user_id):
         raise HTTPException(status_code=429, detail="Quá nhiều yêu cầu — thử lại sau ít phút nhé! 🙏")
+    # I-06: cap tổng số lượt chat per user trong session window (chống cháy credit lúc demo public).
+    if not get_session_limiter().is_allowed(user_id):
+        raise HTTPException(status_code=429, detail="Bạn đã dùng hết lượt chat trong phiên này — thử lại sau nhé! 🙏")
 
     # B-10: dùng filename + content_type để router classify đúng agent chuyên môn
     routing_message = req.message.strip()

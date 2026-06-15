@@ -111,10 +111,17 @@ def admin_stats(c: Container = Depends(get_container), _admin: str = Depends(req
     usage = c.usage.stats()
     feedback = c.feedback.stats_by_agent()
     total_users = c.usage.distinct_users()
+    stop_reasons = c.usage.stop_reason_breakdown()
 
     # Tổng token
     total_in = sum(r["in_tokens"] for r in usage)
     total_out = sum(r["out_tokens"] for r in usage)
+
+    # I-05 observability: tổng lượt, tổng tool-call, latency trung bình (weighted theo số lượt).
+    total_calls = sum(r["calls"] for r in usage)
+    total_tool_calls = sum(r["tool_calls"] for r in usage)
+    weighted_latency = sum(r["avg_latency_ms"] * r["calls"] for r in usage)
+    avg_latency_ms = round(weighted_latency / total_calls) if total_calls else 0
 
     return {
         "counts": {
@@ -128,6 +135,13 @@ def admin_stats(c: Container = Depends(get_container), _admin: str = Depends(req
             "total_in": total_in,
             "total_out": total_out,
             "total": total_in + total_out,
+        },
+        # I-05: chỉ số vận hành tổng + phân bố lý do dừng (soi tỉ lệ lỗi/SLA).
+        "observability": {
+            "total_calls": total_calls,
+            "total_tool_calls": total_tool_calls,
+            "avg_latency_ms": avg_latency_ms,
+            "stop_reasons": stop_reasons,
         },
         "usage_by_agent": usage,
         "feedback_by_agent": feedback,
