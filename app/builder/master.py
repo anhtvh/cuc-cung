@@ -390,7 +390,14 @@ class MasterToolset:
     def _h_list_templates(self, args: dict) -> ToolResult:
         # Read-only: trả danh sách thẻ nhẹ (key/title/icon/description). ChatEngine bắt kết quả
         # tool này để emit event `templates` → UI dựng thẻ bấm chọn.
-        return _ok({"templates": list_template_cards()})
+        return _ok({
+            "templates": list_template_cards(),
+            "note": (
+                "UI đã hiển thị các mẫu này thành THẺ bấm chọn cho user. KHÔNG liệt kê lại "
+                "danh sách mẫu bằng text, KHÔNG nêu field icon/mã key. Chỉ nói đúng MỘT câu "
+                "ngắn mời user bấm chọn thẻ hoặc tự mô tả nhu cầu."
+            ),
+        })
 
     def _h_apply_template(self, args: dict) -> ToolResult:
         # Read-only: KHÔNG ghi registry. Chỉ trả blueprint để Master trình draft cho user.

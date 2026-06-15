@@ -541,8 +541,29 @@ main { flex: 1; overflow: hidden; display: flex; min-height: 0; position: relati
 .wcard-icon .ic { font-size: 16px; }
 .wcard-name { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
 .wcard-hint { font-size: 12px; color: var(--tx2); line-height: 1.4; }
-/* #8: thẻ mẫu agent trong tin nhắn — tái dùng .wcard, chỉ căn trái + tách lề trên */
-.tpl-grid { justify-content: flex-start; margin-top: 10px; }
+/* #8: thẻ mẫu agent (in-chat / lời chào / panel welcome) — tái dùng .wcard.
+   align-items:flex-start chặn flex kéo cao bằng thẻ dài nhất; .wcard là <button> nên khi
+   bị kéo cao trình duyệt căn giữa dọc → nội dung rời rạc, ép flex-column top để dồn lên. */
+/* #8 fix: cố định width 175px + container rộng (handoff-card 80%) làm 4 thẻ wrap 3+1,
+   chừa khoảng phải trống. Giới hạn max-width để xếp 2 thẻ/hàng (4 thẻ → 2×2 cân đối) và
+   cho thẻ flex-grow lấp đầy hàng; align-items:stretch để 2 thẻ cùng hàng bằng chiều cao. */
+.tpl-grid { justify-content: flex-start; margin-top: 10px; align-items: stretch; max-width: 380px; }
+.tpl-grid .wcard {
+  display: flex; flex-direction: column;
+  align-items: flex-start; justify-content: flex-start;
+  /* width: 175px;  ← cũ: cố định gây khoảng trống */
+  flex: 1 1 160px; max-width: none;
+}
+/* panel "Tạo từ mẫu" ở welcome — ẩn cho tới khi bấm "Đặt hàng trợ lý riêng" */
+.tpl-panel { display: none; max-width: 600px; width: 100%; margin-top: 4px; }
+.tpl-panel.open { display: block; }
+.tpl-panel-lead { font-size: 13px; color: var(--tx2); margin-bottom: 8px; }
+.tpl-describe-btn {
+  margin-top: 10px; background: none; border: 1px dashed var(--border); color: var(--tx2);
+  border-radius: var(--r); padding: 8px 14px; font-size: 13px; cursor: pointer;
+  transition: border-color .15s, color .15s;
+}
+.tpl-describe-btn:hover { border-color: var(--blue-soft2); color: var(--tx); }
 
 /* bubbles */
 .msg {

@@ -312,6 +312,8 @@ async function showWelcome() {
   let agents = [];
   try { agents = await fetch("/agents", { headers: headers() }).then((r) => r.json()); } catch (_) {}
   const active = agents.filter((a) => a.status === "public");
+  // #8: đảm bảo có mẫu cho panel "Tạo từ mẫu" (cache rỗng nếu boot fetch chưa xong/ lỗi).
+  if (!_templatesCache.length) await loadTemplates();
 
   const rawName = state.user ? (state.user.name || state.user.email).split(/[@. ]/)[0] : "bạn";
   const hello = rawName.charAt(0).toUpperCase() + rawName.slice(1);
@@ -354,12 +356,42 @@ async function showWelcome() {
     hideWelcome();
     $("#chat-input").focus();
   });
+
+  // #8: panel "Tạo từ mẫu" — chèn ngay dưới ô "Đặt hàng trợ lý riêng", ẩn cho tới khi bấm.
+  let tplPanel = null;
+  if (_templatesCache.length) {
+    tplPanel = document.createElement("div");
+    tplPanel.className = "tpl-panel";
+    const lead = document.createElement("div");
+    lead.className = "tpl-panel-lead";
+    lead.textContent = "Chọn mẫu dựng sẵn để bắt đầu nhanh — hoặc tự mô tả:";
+    tplPanel.appendChild(lead);
+    tplPanel.appendChild(templateGridEl(_templatesCache, { openMaster: true }));
+    const describe = document.createElement("button");
+    describe.className = "tpl-describe-btn";
+    describe.textContent = " Hoặc tự mô tả nhu cầu khác bên dưới khung chat";
+    describe.addEventListener("click", () => {  // = hành vi "Đặt hàng" cũ
+      if (!state.user) { promptLoginForCreate(); return; }
+      startChatWith("master", "");
+      $("#chat-input").focus();
+    });
+    tplPanel.appendChild(describe);
+    welcome.querySelector(".welcome-paths").after(tplPanel);
+  }
+
   welcome.querySelector(".wp-create").addEventListener("click", () => {
-    if (!state.user) { promptLoginForCreate(); return; }
+    if (tplPanel) {  // có mẫu → mở panel chọn (duyệt không cần login; chọn mới gate)
+      tplPanel.classList.toggle("open");
+      if (tplPanel.classList.contains("open")) tplPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      return;
+    }
+    if (!state.user) { promptLoginForCreate(); return; }  // không có mẫu → hành vi cũ
     startChatWith("master", "");  // mở cuộc mới với master (tạo conversation_id riêng)
     $("#chat-input").focus();
   });
-  welcome.querySelectorAll(".wcard").forEach((btn) =>
+  // Chỉ quick-card (.welcome-grid gốc); loại .tpl-grid của panel mẫu — thẻ mẫu đã có
+  // handler riêng (pickTemplate) nên không gắn chồng handler quick-card vào nó.
+  welcome.querySelectorAll(".welcome-grid:not(.tpl-grid) .wcard").forEach((btn) =>
     btn.addEventListener("click", () => {
       $("#chat-input").value = btn.dataset.msg;
       hideWelcome();
@@ -526,29 +558,42 @@ function renderArtifactDownload(assistantDiv, data) {
   scrollBottom();
 }
 
-/* ─── Template cards (#8 — gợi ý mẫu agent) ───────────────── */
-function renderTemplateCards(assistantDiv, data) {
-  if (!assistantDiv || !data || !Array.isArray(data.templates) || !data.templates.length) return;
-  // Idempotent: 1 lượt chỉ render 1 lần (tránh nhân đôi khi re-render/history).
-  if (assistantDiv.querySelector(".tpl-grid")) return;
+/* ─── Template cards (#8 — gợi ý mẫu agent) ───────────────────
+   1 nguồn markup (templateGridEl) + 1 handler (pickTemplate) dùng chung cho 3 điểm:
+   in-chat (event list_templates), lời chào Cục cưng, panel welcome. */
+function templateGridEl(templates, { openMaster }) {
   // Tái dùng pattern thẻ welcome (.welcome-grid + .wcard) cho đồng bộ design.
   const grid = document.createElement("div");
   grid.className = "welcome-grid tpl-grid";
-  grid.innerHTML = data.templates.map((t) => `
+  grid.innerHTML = templates.map((t) => `
     <button class="wcard" data-key="${esc(t.key)}" data-title="${esc(t.title)}">
       <span class="wcard-icon">${svgIcon(t.icon || "bot")}</span>
       <div class="wcard-name">${esc(t.title)}</div>
       <div class="wcard-hint">${esc(t.description || "")}</div>
     </button>`).join("");
   grid.querySelectorAll(".wcard").forEach((btn) =>
-    btn.addEventListener("click", () => {
-      // Chặn gửi chồng khi lượt trước đang chạy (thẻ bỏ qua nút gửi đã disable).
-      if (state.streaming.has(state.activeConvId)) return;
-      $("#chat-input").value = `Mình muốn dùng mẫu "${btn.dataset.title}" (mã: ${btn.dataset.key}).`;
-      submitChat();
-    }));
+    btn.addEventListener("click", () => pickTemplate(btn.dataset.key, btn.dataset.title, openMaster)));
+  return grid;
+}
+
+function pickTemplate(key, title, openMaster) {
+  // Mẫu → tạo agent: cần đăng nhập (gate sớm tránh dead-end với guest).
+  if (!state.user) { promptLoginForCreate(); return; }
+  if (openMaster) {
+    startChatWith("master", "");  // welcome: chưa ở conv master → mở trước (đồng bộ, không race)
+  } else if (state.streaming.has(state.activeConvId)) {
+    return;                       // đang trong conv: chặn gửi chồng khi lượt trước chưa xong
+  }
+  $("#chat-input").value = `Mình muốn dùng mẫu "${title}" (mã: ${key}).`;
+  submitChat();
+}
+
+function renderTemplateCards(container, data) {
+  if (!container || !data || !Array.isArray(data.templates) || !data.templates.length) return;
+  // Idempotent: 1 lượt chỉ render 1 lần (tránh nhân đôi khi re-render/history).
+  if (container.querySelector(".tpl-grid")) return;
   // Append NGOÀI .msg-content — để model ghi text cuối (overwrite .msg-content) không xoá thẻ.
-  assistantDiv.appendChild(grid);
+  container.appendChild(templateGridEl(data.templates, { openMaster: false }));
   scrollBottom();
 }
 
@@ -575,6 +620,10 @@ function addHandoff(name, description) {
     statusBadge = `<div class="handoff-status rejected">❌ Bị từ chối: ${note} &nbsp;·&nbsp; <button class="link-btn" onclick="startChatWith('master','')">Nhờ Master sửa →</button></div>`;
   }
 
+  // #8: chỉ gợi ý mẫu ở lời chào ĐẦU của cuộc trò chuyện master — KHÔNG khi agent escalate
+  // quay về master giữa chừng (lúc đó #messages đã có tin nhắn trước).
+  const isFreshChat = $("#messages").children.length === 0;
+
   const card = document.createElement("div");
   card.className = "handoff-card";
   card.innerHTML = `
@@ -586,6 +635,15 @@ function addHandoff(name, description) {
     }</div>
     ${statusBadge}`;
   $("#messages").appendChild(card);
+
+  // Thẻ mẫu bấm chọn ngay dưới lời chào (đã trong conv master → openMaster:false).
+  if (isMaster && isFreshChat && _templatesCache.length) {
+    const lead = document.createElement("div");
+    lead.className = "tpl-panel-lead";
+    lead.textContent = "Hoặc bắt đầu nhanh từ mẫu:";
+    card.appendChild(lead);
+    card.appendChild(templateGridEl(_templatesCache, { openMaster: false }));
+  }
   scrollBottom();
   return card;
 }
@@ -1577,6 +1635,17 @@ async function refreshAgentsCache() {
   } catch (_) {}
 }
 refreshAgentsCache();
+
+// #8: mẫu agent dựng sẵn — nạp 1 lần, cache cho 3 điểm gợi ý (welcome panel, lời chào
+// Cục cưng, in-chat). Lỗi → rỗng (graceful, các điểm tự fallback).
+let _templatesCache = [];
+async function loadTemplates() {
+  try {
+    const data = await fetch("/templates", { headers: headers() }).then((r) => r.json());
+    _templatesCache = Array.isArray(data.templates) ? data.templates : [];
+  } catch (_) { _templatesCache = []; }
+}
+loadTemplates();
 
 /* ─── @mention state ────────────────────────────────────── */
 const mention = { active: false, query: "", atPos: -1, selIdx: 0 };

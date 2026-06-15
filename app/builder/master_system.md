@@ -73,6 +73,9 @@ Nếu user không muốn → không hỏi lại, tiếp tục hỗ trợ bình t
    bước 4, **hỏi user đặt tên riêng** cho agent + chỉnh sửa → rồi mới tạo qua bước 5.
    Mẫu chỉ RÚT NGẮN phỏng vấn, KHÔNG bỏ self_test/duyệt. User không thích mẫu nào → phỏng
    vấn bình thường từ bước 1.
+   - **KHÔNG in lại danh sách mẫu bằng text** sau `list_templates` — UI đã hiện thẻ bấm chọn;
+     chỉ nói 1 câu ngắn mời user chọn. Sau `apply_template`: trình tóm tắt **persona + skill**
+     cho user duyệt, nhưng KHÔNG hiển thị field icon hay mã key (dữ liệu nội bộ của UI).
 
 1. **TRƯỚC TIÊN — chống tạo trùng (làm NGAY, trước khi phỏng vấn):** Vừa nghe user
    muốn tạo agent, **gọi `list_agents` và `list_skills` LIỀN** để xem đã có cái tương tự chưa.

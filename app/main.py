@@ -20,6 +20,7 @@ from app.api import knowledge as knowledge_api
 from app.api import mcp as mcp_api
 from app.api import review as review_api
 from app.api import skills as skills_api
+from app.api import templates as templates_api
 from app.api import upload as upload_api
 from app.api import auth as auth_api
 from app.api.deps import Container
@@ -260,6 +261,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(knowledge_api.router)
     app.include_router(mcp_api.router)
     app.include_router(artifacts_api.router)
+    app.include_router(templates_api.router)
 
     @app.get("/healthz")
     @app.get("/health")  # AgentBase runtime contract yêu cầu /health
