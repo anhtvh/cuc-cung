@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     max_tokens: int = 16384
     # An toàn tool loop (Flow 3): tối đa 10 vòng tool/lượt, timeout mỗi tool.
     max_tool_rounds: int = 10
+    # P1-2: builder (Flow 2 tạo agent) cần NHIỀU vòng hơn Flow 3. Một build đầy đủ =
+    # list_agents + list_skills + fetch_url + create_skill×N + create_agent + attach_skill×N
+    # + self_test_agent (tới 2 vòng) + submit_for_review + delegate → dễ vượt 10 vòng.
+    # Chạm trần giữa chừng = agent tạo dở (skill chưa attach / chưa submit). Cấp trần riêng cao hơn.
+    builder_max_tool_rounds: int = 20
     tool_timeout_seconds: int = 15
     # SLA trả lời (~1 phút): khi tool loop vượt ngưỡng này, ép model trả lời NGAY
     # trên dữ liệu đã thu thập (không cho gọi thêm tool) — tránh treo do search/đọc dài.

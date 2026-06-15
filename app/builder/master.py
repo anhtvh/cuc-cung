@@ -687,10 +687,29 @@ class MasterToolset:
             return ToolResult(content="Cần ít nhất 1 test case (scenario + expected).", is_error=True)
         test_cases = [TestCase(scenario=str(c["scenario"]), expected=str(c["expected"])) for c in raw]
         report = self._tester.run_tests(agent, test_cases)
+        # P1-3: note phân biệt 3 trạng thái — PASS hết / có FAIL thật / chỉ có case chưa kiểm chứng
+        # được (judge lỗi). KHÔNG báo "sẵn sàng" khi còn case inconclusive (trước đây judge lỗi bị
+        # tính PASS → master submit luôn agent chưa thực sự được kiểm).
+        if report.all_passed:
+            note = "✅ Tất cả test PASS — agent sẵn sàng! Gọi submit_for_review hoặc để user test thêm."
+        elif report.failed > 0:
+            note = (
+                f"❌ {report.failed}/{report.total} test FAIL — xem 'results' để biết lý do. "
+                "Sửa persona (update_agent) hoặc skill (update_skill/create_skill) rồi gọi self_test_agent lại (tối đa 2 lần)."
+            )
+        else:
+            # failed=0 nhưng chưa all_passed → toàn bộ phần còn lại là inconclusive (judge không chạy được).
+            note = (
+                f"⚠️ {report.inconclusive}/{report.total} case CHƯA kiểm chứng được (judge tạm lỗi) — "
+                "KHÔNG khẳng định agent đạt. Thử gọi lại self_test_agent, hoặc báo user tự test tay "
+                "trước khi submit_for_review."
+            )
         return _ok({
             "agent_name": agent_name,
             "all_passed": report.all_passed,
             "passed": report.passed,
+            "failed": report.failed,
+            "inconclusive": report.inconclusive,
             "total": report.total,
             "summary": report.summary(),
             "results": [
@@ -699,16 +718,12 @@ class MasterToolset:
                     "expected": r.expected,
                     "actual": r.actual[:500],
                     "passed": r.passed,
+                    "inconclusive": r.inconclusive,
                     "reason": r.reason,
                 }
                 for r in report.results
             ],
-            "note": (
-                "✅ Tất cả test PASS — agent sẵn sàng! Gọi submit_for_review hoặc để user test thêm."
-                if report.all_passed
-                else f"❌ {report.failed}/{report.total} test FAIL — xem 'results' để biết lý do. "
-                     "Sửa persona (update_agent) hoặc skill (create_skill) rồi gọi self_test_agent lại (tối đa 2 lần)."
-            ),
+            "note": note,
         })
 
     def _h_delegate_to_agent(self, args: dict) -> ToolResult:

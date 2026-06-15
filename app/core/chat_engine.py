@@ -214,6 +214,7 @@ class ChatEngine:
         history_limit: int = 20,
         model: str | None = None,
         builder_sla_seconds: float | None = None,
+        builder_max_tool_rounds: int | None = None,
         knowledge=None,
     ):
         self._agents = agents
@@ -227,6 +228,8 @@ class ChatEngine:
         self._model = model
         # SLA riêng cho master builder (Flow 2): dài hơn để kịp gọi create_* (xem chat_with_tools).
         self._builder_sla_seconds = builder_sla_seconds
+        # P1-2: trần tool-loop riêng cho builder (Flow 2) — None → fallback dùng max_tool_rounds.
+        self._builder_max_tool_rounds = builder_max_tool_rounds or max_tool_rounds
         # KnowledgeService (RAG) — None khi module tắt. Agent có tài liệu → inject tool knowledge_search.
         self._knowledge = knowledge
 
@@ -364,6 +367,87 @@ class ChatEngine:
             )
         return result
 
+    def _assemble_tools(
+        self,
+        agent: Agent,
+        message: str,
+        has_kb: bool,
+        extra_tools: list[ToolDef] | None = None,
+        extra_executor: ToolExecutor | None = None,
+    ) -> tuple[list[ToolDef], ToolExecutor]:
+        """Lắp bộ tool + executor cho 1 lượt. DÙNG CHUNG cho stream() (runtime) và run_once()
+        (sandbox self-test/eval) → hành vi agent KHỚP nhau (P2-1: trước đây run_once không inject
+        escalate/request_update/knowledge_search nên test không phản ánh runtime). Trả (tools, execute).
+
+        Thứ tự inject (ngoài cùng chạy trước): knowledge_search → escalate/request_update →
+        extra_tools (master builder) → catalog. extra_tools/executor chỉ dùng ở stream() cho master.
+        """
+        # Tools = connector của agent map từ catalog — không có thì gọi chay.
+        # dict.fromkeys giữ thứ tự, loại duplicate (vd agent.connectors có "web-search"
+        # trùng với ALWAYS_ON_SERVERS → Anthropic API từ chối duplicate tool name).
+        connectors = list(dict.fromkeys([*ALWAYS_ON_SERVERS, *agent.connectors]))
+        tools = self._catalog.tools_for(connectors)
+        catalog_execute = self._catalog.execute
+        if extra_tools:
+            extra_names = {t.name for t in extra_tools}
+            tools = [*extra_tools, *tools]
+
+            def execute(name: str, args: dict[str, Any]):
+                if name in extra_names and extra_executor is not None:
+                    return extra_executor(name, args)
+                return catalog_execute(name, args)
+        else:
+            execute = catalog_execute
+
+        # Agent con: inject tool escalate nếu agent có escalate_enabled (I-05: per-agent config).
+        # Tool request_update LUÔN inject cho agent con (không phụ thuộc escalate_enabled) —
+        # cập nhật knowledge là nhu cầu chung, luôn phải đi qua master để có duyệt (Flow 4).
+        if agent.name != MASTER_AGENT_NAME:
+            extra = [_REQUEST_UPDATE_TOOL]
+            if agent.escalate_enabled:
+                extra = [_ESCALATE_TOOL, *extra]
+            tools = [*extra, *tools]
+            _base_execute = execute
+
+            def execute(name: str, args: dict[str, Any], _base=_base_execute, _agent=agent, _msg=message):  # type: ignore[misc]
+                if name == "escalate":
+                    original = args.get("original_message") or _msg
+                    reason = args.get("reason", "out of scope")
+                    return ToolResult(
+                        content="Đang chuyển về Master.",
+                        delegate_to=MASTER_AGENT_NAME,
+                        delegate_message=f"[Escalated từ @{_agent.name}: {reason}]\n\n{original}",
+                    )
+                if name == "request_update":
+                    original = args.get("original_message") or _msg
+                    change = args.get("change_request", "").strip() or original
+                    # Prefix riêng để master nhận diện đây là yêu cầu cập nhật agent (không phải escalate).
+                    return ToolResult(
+                        content="Đang chuyển yêu cầu cập nhật về Master.",
+                        delegate_to=MASTER_AGENT_NAME,
+                        delegate_message=(
+                            f"[Cập nhật agent @{_agent.name}: {change}]\n\n"
+                            f"Nguyên văn yêu cầu của user: {original}"
+                        ),
+                    )
+                return _base(name, args)
+
+        # RAG: agent có tài liệu → inject knowledge_search (gated bởi module bật).
+        if has_kb:
+            tools = [_KNOWLEDGE_SEARCH_TOOL, *tools]
+            _kb_base = execute
+
+            def execute(name: str, args: dict[str, Any], _base=_kb_base, _agent=agent):  # type: ignore[misc]
+                if name == "knowledge_search":
+                    hits = self._knowledge.search(_agent.name, str(args.get("query", "")))
+                    if not hits:
+                        return ToolResult(content="Không tìm thấy nội dung liên quan trong tài liệu nội bộ.")
+                    parts = [f"[Nguồn: {h.get('source') or 'tài liệu'}]\n{h.get('content', '')}" for h in hits]
+                    return ToolResult(content="\n\n---\n\n".join(parts))
+                return _base(name, args)
+
+        return tools, execute
+
     def run_once(
         self,
         user_id: str,
@@ -371,17 +455,21 @@ class ChatEngine:
         message: str,
         max_tool_rounds: int = 2,
     ) -> str:
-        """Sandbox: 1 lượt chat không ghi memory, dùng cho self-test (HM3).
-        Không inject escalate, không auto-start — chạy sạch theo config agent."""
-        system = self.build_system_prompt(agent, user_id, message=message)
+        """Sandbox: 1 lượt chat không ghi memory, dùng cho self-test (HM3) và eval.
+
+        P2-1: dựng ĐÚNG system prompt + tool-set như runtime (escalate/request_update/
+        knowledge_search) qua _assemble_tools, để PASS sandbox phản ánh hành vi thật. Không
+        auto_start (chạy sạch theo config). Nếu agent escalate/chuyển hướng → ghi marker vào
+        output để judge thấy được (escalate là hành động cuối, ít text)."""
+        has_kb = self._knowledge is not None and self._knowledge.has_docs(agent.name)
+        system = self.build_system_prompt(agent, user_id, message=message, knowledge_enabled=has_kb)
         user_msg = ChatMessage(role="user", content=message)
-        connectors = list(dict.fromkeys([*ALWAYS_ON_SERVERS, *agent.connectors]))
-        tools = self._catalog.tools_for(connectors)
+        tools, execute = self._assemble_tools(agent, message, has_kb)
         text_parts: list[str] = []
         try:
             events = (
                 self._llm.chat_with_tools(
-                    system, [user_msg], tools, self._catalog.execute,
+                    system, [user_msg], tools, execute,
                     max_rounds=max_tool_rounds, model=self._model,
                 )
                 if tools
@@ -390,6 +478,11 @@ class ChatEngine:
             for ev in events:
                 if isinstance(ev, TextDelta):
                     text_parts.append(ev.text)
+                elif isinstance(ev, ToolCallEvent) and ev.result.delegate_to:
+                    # Giống runtime: dừng ngay sau delegate, và ghi marker để judge thấy agent
+                    # ĐÃ chuyển hướng đúng (quan trọng cho case ngoài-phạm-vi/cập-nhật).
+                    text_parts.append(f"\n[Đã chuyển sang @{ev.result.delegate_to}]")
+                    break
         except Exception as e:  # noqa: BLE001
             log.warning("run_once sandbox fail (agent=%s): %s", agent.name, e)
             return f"[sandbox error: {e}]"
@@ -460,87 +553,39 @@ class ChatEngine:
 
         messages = [*history, user_msg]
 
-        # Tools = connector của agent map từ catalog — không có thì gọi chay.
-        # dict.fromkeys giữ thứ tự, loại duplicate (vd agent.connectors có "web-search"
-        # trùng với ALWAYS_ON_SERVERS → Anthropic API từ chối duplicate tool name).
-        connectors = list(dict.fromkeys([*ALWAYS_ON_SERVERS, *agent.connectors]))
-        tools = self._catalog.tools_for(connectors)
-        catalog_execute = self._catalog.execute
-        if extra_tools:
-            extra_names = {t.name for t in extra_tools}
-            tools = [*extra_tools, *tools]
-
-            def execute(name: str, args: dict[str, Any]):
-                if name in extra_names and extra_executor is not None:
-                    return extra_executor(name, args)
-                return catalog_execute(name, args)
-        else:
-            execute = catalog_execute
-
-        # Agent con: inject tool escalate nếu agent có escalate_enabled (I-05: per-agent config).
-        # Tool request_update LUÔN inject cho agent con (không phụ thuộc escalate_enabled) —
-        # cập nhật knowledge là nhu cầu chung, luôn phải đi qua master để có duyệt (Flow 4).
-        if agent.name != MASTER_AGENT_NAME:
-            extra = [_REQUEST_UPDATE_TOOL]
-            if agent.escalate_enabled:
-                extra = [_ESCALATE_TOOL, *extra]
-            tools = [*extra, *tools]
-            _base_execute = execute
-
-            def execute(name: str, args: dict[str, Any], _base=_base_execute, _agent=agent, _msg=message):  # type: ignore[misc]
-                if name == "escalate":
-                    original = args.get("original_message") or _msg
-                    reason = args.get("reason", "out of scope")
-                    return ToolResult(
-                        content="Đang chuyển về Master.",
-                        delegate_to=MASTER_AGENT_NAME,
-                        delegate_message=f"[Escalated từ @{_agent.name}: {reason}]\n\n{original}",
-                    )
-                if name == "request_update":
-                    original = args.get("original_message") or _msg
-                    change = args.get("change_request", "").strip() or original
-                    # Prefix riêng để master nhận diện đây là yêu cầu cập nhật agent (không phải escalate).
-                    return ToolResult(
-                        content="Đang chuyển yêu cầu cập nhật về Master.",
-                        delegate_to=MASTER_AGENT_NAME,
-                        delegate_message=(
-                            f"[Cập nhật agent @{_agent.name}: {change}]\n\n"
-                            f"Nguyên văn yêu cầu của user: {original}"
-                        ),
-                    )
-                return _base(name, args)
-
-        # RAG: agent có tài liệu → inject knowledge_search (gated bởi module bật). has_kb tính 1 lần ở trên.
-        if has_kb:
-            tools = [_KNOWLEDGE_SEARCH_TOOL, *tools]
-            _kb_base = execute
-
-            def execute(name: str, args: dict[str, Any], _base=_kb_base, _agent=agent):  # type: ignore[misc]
-                if name == "knowledge_search":
-                    hits = self._knowledge.search(_agent.name, str(args.get("query", "")))
-                    if not hits:
-                        return ToolResult(content="Không tìm thấy nội dung liên quan trong tài liệu nội bộ.")
-                    parts = [f"[Nguồn: {h.get('source') or 'tài liệu'}]\n{h.get('content', '')}" for h in hits]
-                    return ToolResult(content="\n\n---\n\n".join(parts))
-                return _base(name, args)
+        # Lắp tool + executor (escalate / request_update / knowledge_search / master builder) —
+        # DÙNG CHUNG với run_once() qua _assemble_tools để sandbox self-test/eval khớp runtime (P2-1).
+        tools, execute = self._assemble_tools(
+            agent, message, has_kb, extra_tools=extra_tools, extra_executor=extra_executor
+        )
 
         assistant_text: list[str] = []
+        # P1-4: tên agent đã delegate/escalate (nếu có) — dùng ở finally để lưu marker assistant,
+        # giữ cặp user/assistant không vỡ alternation cho lượt sau (xem finally).
+        delegate_target: str | None = None
         # I-05 observability: đo độ trễ lượt + đếm tool-call để ghi usage_log.
         turn_start = time.monotonic()
         tool_call_count = 0
         try:
             if tools:
-                # Master builder (Flow 2, đã đăng nhập): cần SLA dài hơn để kịp gọi create_*
-                # sau khi research. Call thường (Flow 3) bỏ qua → dùng SLA mặc định của client.
+                # Master builder (Flow 2, đã đăng nhập) cần cấu hình riêng so với chat thường (Flow 3).
                 tool_kwargs: dict[str, Any] = {"max_rounds": self._max_tool_rounds, "model": self._model}
-                if agent.name == MASTER_AGENT_NAME and not is_guest and self._builder_sla_seconds:
-                    tool_kwargs["sla_seconds"] = self._builder_sla_seconds
-                    # Non-stream cho builder: tool_use input lớn (create_skill/create_agent) bị mất
-                    # khi streaming qua MaaS/minimax — xem chat_with_tools.
+                # is_builder = master + đã đăng nhập (guest không có tool ghi). Tách bạch các cấu hình
+                # builder khỏi việc "có set SLA hay không":
+                #  - P1-1: stream=False BẮT BUỘC vì tool_use input lớn (content skill markdown ~15k ký
+                #    tự) bị MẤT khi streaming qua MaaS/minimax → create_* vỡ im lặng. Cũ: gate nhầm vào
+                #    self._builder_sla_seconds — nếu set =0 (tắt SLA) thì builder quay lại stream=True →
+                #    create_agent hỏng. Giờ chỉ phụ thuộc "có phải builder không".
+                #  - P1-2: builder dùng trần tool-loop riêng (cao hơn) để không tạo agent dở dang
+                #    (chạm trần giữa chừng = skill chưa attach / chưa submit).
+                #  - I-04: builder tool ghi registry có thứ tự phụ thuộc (create_skill → attach_skill)
+                #    → KHÔNG parallel hóa. Flow 3 (read-only tools) dùng default True.
+                if agent.name == MASTER_AGENT_NAME and not is_guest:
                     tool_kwargs["stream"] = False
-                    # I-04: builder tool ghi registry có thứ tự phụ thuộc (create_skill → attach_skill)
-                    # → KHÔNG parallel hóa. Flow 3 (read-only tools) dùng default True.
                     tool_kwargs["parallel_tools"] = False
+                    tool_kwargs["max_rounds"] = self._builder_max_tool_rounds
+                    if self._builder_sla_seconds:
+                        tool_kwargs["sla_seconds"] = self._builder_sla_seconds
                 events = self._llm.chat_with_tools(
                     system, messages, tools, execute, **tool_kwargs
                 )
@@ -569,6 +614,7 @@ class ChatEngine:
                     if ev.result.delegate_to:
                         # L-01: emit text trước khi delegate để user không thấy blank.
                         # Không ghi vào assistant_text — tránh lưu câu UI này vào memory.
+                        delegate_target = ev.result.delegate_to  # P1-4: nhớ để lưu marker ở finally
                         fallback = f"Đang chuyển yêu cầu sang @{ev.result.delegate_to}..."
                         yield {"event": "delta", "data": {"text": fallback}}
                         yield {
@@ -603,6 +649,16 @@ class ChatEngine:
             # Lưu marker sạch thay vì câu lệnh đó — vẫn giữ cặp user/assistant để
             # lượt sau không vỡ alternation, nhưng không làm bẩn ngữ cảnh hội thoại.
             stored_user = "[Tự động bắt đầu]" if auto_start else stored_msg
-            self._memory.append(user_id, conv_id, agent.name, "user", stored_user)
+            # P1-4: PHẢI lưu đủ CẶP user/assistant. Trước đây chỉ append 'assistant' khi có full_text →
+            # đường delegate/escalate (text fallback KHÔNG vào assistant_text) hoặc stream lỗi sạch sẽ
+            # để lại 'user' mồ côi → lượt sau history có 2 'user' liên tiếp → MaaS/Anthropic 400 (vỡ
+            # alternation). Luôn ghép một 'assistant' tương ứng: nội dung thật → marker delegate → marker
+            # gián đoạn.
             if full_text:
-                self._memory.append(user_id, conv_id, agent.name, "assistant", full_text)
+                assistant_stored = full_text
+            elif delegate_target:
+                assistant_stored = f"[Đã chuyển sang @{delegate_target}]"
+            else:
+                assistant_stored = "[Phản hồi bị gián đoạn]"
+            self._memory.append(user_id, conv_id, agent.name, "user", stored_user)
+            self._memory.append(user_id, conv_id, agent.name, "assistant", assistant_stored)

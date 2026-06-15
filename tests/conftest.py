@@ -35,7 +35,10 @@ class FakeLLM:
         execute: ToolExecutor,
         max_rounds: int = 5,
         model: str | None = None,
+        **kwargs: Any,  # nhận sla_seconds/stream/parallel_tools mà không vỡ test (xem AnthropicMaaSClient)
     ) -> Iterator[LLMEvent]:
+        # Ghi lại kwargs lần gọi cuối để test khẳng định cấu hình builder (stream=False, ...).
+        self.tool_call_kwargs = {"max_rounds": max_rounds, "model": model, **kwargs}
         yield TextDelta("fake tool reply")
         yield Done(input_tokens=1, output_tokens=1, stop_reason="end_turn")
 

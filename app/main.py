@@ -209,6 +209,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         history_limit=settings.memory_history_limit,
         model=settings.model,
         builder_sla_seconds=settings.builder_sla_seconds,
+        builder_max_tool_rounds=settings.builder_max_tool_rounds,  # P1-2: trần riêng cho Flow 2
         knowledge=knowledge,
     )
 
