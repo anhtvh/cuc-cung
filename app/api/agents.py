@@ -1,6 +1,6 @@
 """CRUD đọc agents cho trang Catalog (Flow 2b tầng 'User nhìn thấy')."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.api.deps import Container, get_container, get_user_id, require_login
@@ -48,11 +48,12 @@ def list_agents(
 
 @router.get("/mine")
 def my_agents(
+    request: Request,
     c: Container = Depends(get_container),
-    user: object = Depends(require_login),
 ):
-    """Agents do user hiện tại tạo (mọi status). Trả system_prompt để modal Sửa dùng."""
-    agents = c.agents.list(created_by=user.email)
+    """Agents do user hiện tại tạo (mọi status). Guest được phép — trả trial agents theo guest_sid."""
+    user_id = request.state.user_id
+    agents = c.agents.list(created_by=user_id)
     agents = [a for a in agents if a.name != MASTER_AGENT_NAME]
     calls_map = c.usage.call_counts()
     skills_map = c.agents.skills_of_many([a.name for a in agents])

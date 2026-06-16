@@ -291,20 +291,17 @@ MASTER_TOOLS: list[ToolDef] = [
 ]
 
 
-# Tool thuộc luồng tạo/quản trị agent — guest KHÔNG được dùng, phải đăng nhập trước.
-# Gồm cả tool ghi (mutate registry) lẫn tool phụ trợ build (fetch_url chưng cất skill,
-# self_test_agent test agent vừa tạo) — guest chỉ chat + dùng agent public.
+# Tool bị chặn với guest. create_agent / create_skill / attach_skill được MỞ để guest
+# trải nghiệm tạo agent (trial mode) — agent lưu private, chỉ mình guest thấy.
+# submit_for_review vẫn bị chặn: muốn chia sẻ với công ty → phải đăng nhập.
 _GUEST_BLOCKED_TOOLS = {
-    "create_agent",
-    "create_skill",
     "update_agent",
     "update_skill",
     "delete_agent",
-    "attach_skill",
-    "submit_for_review",
+    "submit_for_review",   # gate: muốn share → đăng nhập
     "fetch_url",
     "self_test_agent",
-    "set_salutation",  # cần user row để lưu — guest không persist được
+    "set_salutation",      # cần user row để lưu — guest không persist được
 }
 
 # Tool cấp cho master khi user là guest: bỏ các tool ghi, giữ read + delegate + run
@@ -313,13 +310,16 @@ GUEST_MASTER_TOOLS: list[ToolDef] = [t for t in MASTER_TOOLS if t.name not in _G
 
 # Chỉ thị thêm cho master khi user chưa đăng nhập — mời đăng nhập thay vì tạo agent.
 GUEST_BUILDER_NOTE = """
-# Người dùng CHƯA ĐĂNG NHẬP (khách)
+# Người dùng CHƯA ĐĂNG NHẬP (chế độ thử nghiệm)
 
-User hiện là **khách** — chỉ trải nghiệm chat và dùng agent công khai.
-- Bạn VẪN trả lời câu hỏi và kết nối họ tới agent công khai phù hợp như bình thường.
-- NHƯNG khách **KHÔNG thể tạo / sửa / xóa agent hay skill**.
-- Nếu khách muốn tạo/sửa/xóa agent: nói nhẹ nhàng rằng cần **đăng nhập trước**, mời họ bấm
-  nút **"Đăng nhập"** ở góc trên bên phải. TUYỆT ĐỐI không hứa sẽ tạo, không cố gọi tool tạo/sửa/xóa.
+User là **khách** — được phép tạo agent để trải nghiệm mà không cần đăng nhập.
+- Bạn CÓ THỂ dùng `create_skill`, `create_agent`, `attach_skill` bình thường.
+- Agent / skill được tạo sẽ **chỉ hiển thị với riêng khách này** (private, không ai khác thấy).
+- Khách **KHÔNG thể** sửa, xóa, hay chia sẻ agent với công ty.
+- Nếu khách muốn **chia sẻ agent với cả công ty** hoặc **giữ agent sau 24 giờ**:
+  nói nhẹ nhàng rằng cần **đăng nhập** (nút "Đăng nhập" góc trên phải) —
+  mọi agent đã tạo sẽ được **giữ lại tự động** sau khi đăng nhập.
+- TUYỆT ĐỐI không gọi `submit_for_review`, `update_agent`, `update_skill`, `delete_agent`.
 """
 
 # Thông báo khi guest cố gọi tool ghi (chốt chặn cứng — defense in depth).

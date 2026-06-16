@@ -1138,3 +1138,17 @@ main { flex: 1; overflow: hidden; display: flex; min-height: 0; position: relati
   100% { left: 150%; opacity: 0; }
 }
 .btn-talk::after { background: linear-gradient(100deg, transparent 0%, color-mix(in srgb, var(--blue) 40%, transparent) 50%, transparent 100%); }
+
+.guest-trial-banner {
+  background: color-mix(in srgb, var(--blue) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--blue) 30%, transparent);
+  border-radius: 8px;
+  padding: .6rem 1rem;
+  margin-bottom: .75rem;
+  font-size: .82rem;
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  flex-wrap: wrap;
+}

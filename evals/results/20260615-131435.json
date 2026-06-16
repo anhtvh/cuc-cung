@@ -109,7 +109,7 @@
         "passed": false,
         "inconclusive": false,
         "reason": "Câu trả lời bị lỗi trộn ngôn ngữ (không客气) gây thiếu chuyên nghiệp.",
-        "actual": "\n\nAnh/chị không客气 ạ 😊 Em chào anh/chị!\n\nNếu anh/chị có bất kỳ thắc mắc nào về ZaloPay như tài khoản, nạp/rút tiền, thanh toán hay bảo mật, cứ nhắn em hỗ trợ nhé!"
+        "actual": "\n\nAnh/chị không ạ 😊 Em chào anh/chị!\n\nNếu anh/chị có bất kỳ thắc mắc nào về Zalopay như tài khoản, nạp/rút tiền, thanh toán hay bảo mật, cứ nhắn em hỗ trợ nhé!"
       }
     ]
   }

@@ -182,14 +182,14 @@ function refreshTabsForUser() {
   const isLoggedIn = !!state.user;
   $("#review-tab").hidden = !isAdmin;
   $("#stats-tab").hidden = !isAdmin;
-  $("#myagents-tab").hidden = !isLoggedIn;
+  // Guest vẫn xem được tab "Của tôi" để xem/dùng trial agents họ đã tạo
+  $("#myagents-tab").hidden = false;
   const guestCta = $("#home-guest-cta");
   if (guestCta) guestCta.hidden = isLoggedIn;
   // Sidebar chỉ show với logged-in user
   const sidebar = $("#chat-sidebar");
   if (sidebar) sidebar.style.display = isLoggedIn ? "" : "none";
   if (!isAdmin && ($("#panel-review").classList.contains("active") || $("#panel-stats").classList.contains("active"))) switchTab("home");
-  if (!isLoggedIn && $("#panel-myagents").classList.contains("active")) switchTab("home");
 }
 
 /* ─── Tabs ──────────────────────────────────────────────── */
@@ -371,7 +371,6 @@ async function showWelcome() {
     describe.className = "tpl-describe-btn";
     describe.textContent = " Hoặc tự mô tả nhu cầu khác bên dưới khung chat";
     describe.addEventListener("click", () => {  // = hành vi "Đặt hàng" cũ
-      if (!state.user) { promptLoginForCreate(); return; }
       startChatWith("master", "");
       $("#chat-input").focus();
     });
@@ -380,12 +379,11 @@ async function showWelcome() {
   }
 
   welcome.querySelector(".wp-create").addEventListener("click", () => {
-    if (tplPanel) {  // có mẫu → mở panel chọn (duyệt không cần login; chọn mới gate)
+    if (tplPanel) {  // có mẫu → mở panel chọn (guest cũng tạo được, không gate)
       tplPanel.classList.toggle("open");
       if (tplPanel.classList.contains("open")) tplPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
       return;
     }
-    if (!state.user) { promptLoginForCreate(); return; }  // không có mẫu → hành vi cũ
     startChatWith("master", "");  // mở cuộc mới với master (tạo conversation_id riêng)
     $("#chat-input").focus();
   });
@@ -577,8 +575,6 @@ function templateGridEl(templates, { openMaster }) {
 }
 
 function pickTemplate(key, title, openMaster) {
-  // Mẫu → tạo agent: cần đăng nhập (gate sớm tránh dead-end với guest).
-  if (!state.user) { promptLoginForCreate(); return; }
   if (openMaster) {
     startChatWith("master", "");  // welcome: chưa ở conv master → mở trước (đồng bộ, không race)
   } else if (state.streaming.has(state.activeConvId)) {
@@ -2010,6 +2006,11 @@ window.decide = async (kind, name, action, btn) => {
 
 /* ─── Submit agent for review ───────────────────────────── */
 window.submitAgentForReview = async function (name, btn) {
+  if (!state.user) {
+    openAuthModal(true);
+    showToast("Đăng nhập để chia sẻ agent — agent thử nghiệm sẽ được giữ lại tự động 🔒");
+    return;
+  }
   if (btn) { btn.disabled = true; btn.textContent = "Đang gửi…"; }
   try {
     const resp = await fetch(`/agents/${encodeURIComponent(name)}/submit`, {
@@ -2290,14 +2291,12 @@ function promptLoginForCreate() {
   showToast("Đăng nhập để tạo trợ lý riêng nhé! 😊");
 }
 
-// Vào luồng tạo agent qua chat với Cục cưng — guest phải đăng nhập trước.
+// Vào luồng tạo agent qua chat với Cục cưng — guest tạo được (trial mode).
 window.startBuilderChat = function () {
-  if (!state.user) { promptLoginForCreate(); return; }
   startChatWith("master", "");
 };
 
 window.openQuickCreate = function () {
-  if (!state.user) { promptLoginForCreate(); return; }
   // reset state
   Object.assign(qc, { step: 1, name: "", domain: "legal", purpose: "", skillContent: "", skillFilename: null });
   $("#qc-name").value = "";
@@ -2590,29 +2589,34 @@ async function restoreHistoryFromServer() {
 async function loadMyAgents() {
   const grid = $("#myagents-list");
   if (!grid) return;
-  if (!state.user) { grid.innerHTML = `<p class="empty">Vui lòng đăng nhập để xem agent của bạn.</p>`; return; }
   grid.innerHTML = `<p class="empty">Đang tải…</p>`;
   try {
     const agents = await fetch("/agents/mine", { headers: headers() }).then((r) => r.json());
+    const isGuest = !state.user;
     if (!agents.length) {
-      grid.innerHTML = `<p class="empty">Bạn chưa tạo agent nào. <button class="link-btn-inline" onclick="startChatWith('master','')">Tạo ngay →</button></p>`;
+      const msg = isGuest
+        ? `Bạn chưa tạo agent thử nghiệm nào. <button class="link-btn-inline" onclick="startChatWith('master','')">Thử tạo ngay →</button>`
+        : `Bạn chưa tạo agent nào. <button class="link-btn-inline" onclick="startChatWith('master','')">Tạo ngay →</button>`;
+      grid.innerHTML = `<p class="empty">${msg}</p>`;
       return;
     }
     const statusBadge = { private: "Nháp", pending_review: "Chờ duyệt", public: "Đang dùng", rejected: "Từ chối" };
     const statusColor = { private: "#94a3b8", pending_review: "#fbbf24", public: "#6ee7b7", rejected: "#f87171" };
-    grid.innerHTML = agents.map((a) => {
+    const guestBanner = isGuest ? `<div class="guest-trial-banner">
+      🧪 Chế độ thử nghiệm — agent chỉ hiển thị với bạn trong 24h.
+      <button class="link-btn-inline" onclick="openAuthModal(true)">Đăng nhập để lưu vĩnh viễn →</button>
+    </div>` : "";
+    grid.innerHTML = guestBanner + agents.map((a) => {
       const st = a.status;
       const color = statusColor[st] || "#94a3b8";
       const label = statusBadge[st] || st;
       const isAdmin = state.user?.role === "admin";
-      // Sửa được khi không chờ duyệt VÀ (chưa public HOẶC là nhà quản lý).
-      // Agent public = cả công ty đang dùng → chỉ admin cập nhật được (governance.can_update).
-      const canEdit = st !== "pending_review" && (st !== "public" || isAdmin);
-      // Xóa được khi đang nháp hoặc bị từ chối (status-based, không phải visibility)
-      const canDelete = st === "private" || st === "rejected";
-      const canSubmit = st === "private";
-      const canRetract = st === "pending_review";
-      const canResubmit = st === "rejected";
+      // Guest không sửa/xóa/submit qua UI (API vẫn block ở server)
+      const canEdit = !isGuest && st !== "pending_review" && (st !== "public" || isAdmin);
+      const canDelete = !isGuest && (st === "private" || st === "rejected");
+      const canSubmit = !isGuest && st === "private";
+      const canRetract = !isGuest && st === "pending_review";
+      const canResubmit = !isGuest && st === "rejected";
       // C1 (lan toả): dòng trạng thái chia sẻ rõ ràng theo vòng đời private→pending→public.
       let shareNote = "";
       if (st === "public") {
@@ -2640,6 +2644,7 @@ async function loadMyAgents() {
         <div class="mp-actions">
           ${canEdit ? `<button class="btn-sm" data-agent="${safeAgent}" onclick="openAgentEditModal(JSON.parse(this.dataset.agent))">Sửa</button>` : ""}
           ${canSubmit ? `<button class="btn-sm btn-sm-primary" onclick="submitMyAgent('${esc(a.name)}')">Gửi duyệt</button>` : ""}
+          ${isGuest && st === "private" ? `<button class="btn-sm btn-sm-primary" onclick="openAuthModal(true)">Đăng nhập để chia sẻ</button>` : ""}
           ${canRetract ? `<button class="btn-sm" onclick="retractMyAgent('${esc(a.name)}')">Hủy nộp duyệt</button>` : ""}
           ${canResubmit ? `<button class="btn-sm btn-sm-primary" onclick="submitMyAgent('${esc(a.name)}')">Gửi lại</button>` : ""}
           ${canDelete ? `<button class="btn-sm btn-sm-danger" onclick="deleteMyAgent('${esc(a.name)}')">Xóa</button>` : ""}
