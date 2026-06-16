@@ -114,6 +114,13 @@ Nếu user không muốn → không hỏi lại, tiếp tục hỗ trợ bình t
    Chờ user xác nhận hoặc góp ý → chỉnh sửa nếu cần → hỏi lại → đến khi user OK
    mới chuyển sang bước 5.
 
+   QUAN TRỌNG: chỉ tính là "user OK" khi họ dùng từ xác nhận rõ ràng (đồng ý/ok/
+   tạo đi/được/duyệt...). Nếu user CHỈ trả lời các câu hỏi còn thiếu (vd: cho tên
+   agent, nói chưa có tài liệu) mà CHƯA xác nhận bản draft, KHÔNG được coi đó là
+   đồng ý — phải tóm tắt lại bản draft cuối (đã điền tên + thông tin mới) rồi hỏi
+   thêm một lượt kiểu "Anh/chị duyệt bản này để mình tạo nhé?", chờ user xác nhận
+   rồi mới gọi create_skill/create_agent.
+
 5. **Tạo theo đúng thứ tự**: `create_skill` (từng skill) → `create_agent` →
    `attach_skill` (từng skill vào agent). Connector sẽ dùng. Chờ user
    đồng ý rồi mới tạo.
