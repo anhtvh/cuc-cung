@@ -825,7 +825,9 @@ main { flex: 1; overflow: hidden; display: flex; min-height: 0; position: relati
 /* feedback */
 .feedback-row { display: flex; align-items: center; gap: 7px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
 .fb-btn { background: transparent; border: 1px solid var(--border-2); border-radius: 8px; padding: 4px 11px; cursor: pointer; transition: background .15s, border-color .15s, transform .1s; color: var(--tx2); display: inline-flex; align-items: center; }
-.fb-btn .ic { font-size: 15px; }
+.fb-btn .ic { width: 16px; height: 16px; }
+.ei { display: inline-flex; align-items: center; vertical-align: -0.15em; }
+.ei .ic { width: 1em; height: 1em; }
 .fb-btn:hover:not(:disabled) { background: var(--surface-2); border-color: var(--tx3); transform: scale(1.08); }
 .fb-btn.active[data-val="1"] { background: var(--green-soft); border-color: var(--green); color: var(--green-ink); }
 .fb-btn.active[data-val="-1"] { background: var(--red-soft); border-color: var(--red); color: var(--red); }

@@ -468,7 +468,7 @@ function renderSubAgentCard(agentName, output, isError) {
       <span class="sac-label">${esc(label)}</span>
       ${isError ? '<span class="sac-err-badge">lỗi</span>' : ''}
     </div>
-    <div class="sac-body">${output ? renderMarkdown(output) : '<em>Không có kết quả</em>'}</div>`;
+    <div class="sac-body">${output ? renderMsg(output) : '<em>Không có kết quả</em>'}</div>`;
   $("#messages").appendChild(card);
   scrollBottom();
   return card;
@@ -711,7 +711,7 @@ async function _triggerAgentAutoStart(agentName, slug) {
             assistantDiv = addMsg("assistant", "", tag);
           }
           assistantText += data.text;
-          assistantDiv.querySelector(".msg-content").innerHTML = renderMarkdown(assistantText);
+          assistantDiv.querySelector(".msg-content").innerHTML = renderMsg(assistantText);
           scrollBottom();
         } else if (ev === "tool") {
           if (!_live()) continue;
@@ -721,7 +721,7 @@ async function _triggerAgentAutoStart(agentName, slug) {
             assistantDiv = addMsg("assistant", "", tag);
           }
           if (assistantText.trim()) {
-            turnAddStep(assistantDiv, `<div class="ps-think">${renderMarkdown(assistantText)}</div>`, "think");
+            turnAddStep(assistantDiv, `<div class="ps-think">${renderMsg(assistantText)}</div>`, "think");
             assistantText = "";
             assistantDiv.querySelector(".msg-content").innerHTML = "";
           }
@@ -767,7 +767,7 @@ async function _triggerAgentAutoStart(agentName, slug) {
     finalizeTurnProcess(assistantDiv);
     if (assistantDiv) {
       const mc = assistantDiv.querySelector(".msg-content");
-      if (mc) mc.innerHTML = renderMarkdown(assistantText);
+      if (mc) mc.innerHTML = renderMsg(assistantText);
       if (assistantText) addFeedbackButtons(assistantDiv, agentName, assistantText);
     }
     // Auto-handoff khi agent auto-start escalate về Master (đồng bộ với handler chat chính).
@@ -864,7 +864,7 @@ async function restoreConv(key) {
         } else if (msg.role === "assistant") {
           const tag = agentName === "master" ? "Cục cưng" : (agentName ? "@" + agentName : "");
           const div = addMsg("assistant", "", tag);
-          div.querySelector(".msg-content").innerHTML = renderMarkdown(msg.content);
+          div.querySelector(".msg-content").innerHTML = renderMsg(msg.content);
         }
       }
       scrollBottom();
@@ -1347,7 +1347,7 @@ $("#chat-form").addEventListener("submit", async (e) => {
 
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({ detail: resp.statusText }));
-      addMsg("error", `Lỗi ${resp.status}: ${err.detail}`);
+      addMsg("error", err.detail || "Có lỗi xảy ra, thử lại nhé! 😅");
       return;
     }
 
@@ -1404,7 +1404,7 @@ $("#chat-form").addEventListener("submit", async (e) => {
             assistantDiv = addMsg("assistant", "", tag);
           }
           assistantText += data.text;
-          assistantDiv.querySelector(".msg-content").innerHTML = renderMarkdown(assistantText);
+          assistantDiv.querySelector(".msg-content").innerHTML = renderMsg(assistantText);
           scrollBottom();
 
         } else if (ev === "tool") {
@@ -1428,7 +1428,7 @@ $("#chat-form").addEventListener("submit", async (e) => {
             }
             // Narration trước khi gọi tool = "suy nghĩ" → gấp vào quá trình, không lẫn vào kết quả
             if (assistantText.trim()) {
-              turnAddStep(assistantDiv, `<div class="ps-think">${renderMarkdown(assistantText)}</div>`, "think");
+              turnAddStep(assistantDiv, `<div class="ps-think">${renderMsg(assistantText)}</div>`, "think");
               assistantText = "";
               assistantDiv.querySelector(".msg-content").innerHTML = "";
             }
@@ -1497,7 +1497,7 @@ $("#chat-form").addEventListener("submit", async (e) => {
     // Render markdown sau khi stream xong
     if (assistantDiv) {
       const mc = assistantDiv.querySelector(".msg-content");
-      if (mc) mc.innerHTML = renderMarkdown(assistantText);
+      if (mc) mc.innerHTML = renderMsg(assistantText);
 
       // Fallback: model gọi nhiều tool nhưng không sinh kết quả cuối (minimax pattern) →
       // lấy nội dung "think" step cuối cùng trong accordion lên bubble chính.
@@ -1578,7 +1578,7 @@ $("#chat-form").addEventListener("submit", async (e) => {
     }
   } catch (err) {
     hideTyping();
-    addMsg("error", `Ủa, mất kết nối rồi 😅 Thử lại nhé! (${err.message})`);
+    addMsg("error", "Model đang quay như chong chóng 🌀 Thử lại sau chút xíu nhé!!");
   } finally {
     finishStream(_convId);  // #3: nếu user đã xoá cuộc này giữa chừng → DELETE sau khi server ghi xong
     $("#send-btn").disabled = false;
@@ -2114,6 +2114,40 @@ function buildTableHtml(rows) {
   return `<div class="md-table-wrap"><table class="md-table"><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table></div>`;
 }
 
+const _EMOJI_ICON_MAP = {
+  '🔍': 'search', '🔎': 'search',
+  '✅': 'check',  '☑️': 'check',
+  '❌': 'xmark',  '✖️': 'xmark',
+  '🤖': 'bot',
+  '💬': 'chat',   '🗨️': 'chat',
+  '✨': 'sparkle', '⭐': 'sparkle', '💫': 'sparkle',
+  '🌍': 'globe',  '🌐': 'globe',   '🌎': 'globe',
+  '🔧': 'wrench', '⚙️': 'wrench',
+  '🔥': 'fire',
+};
+
+const _EMOJI_STRIP = [
+  '👋','😊','😀','😁','😄','😃','🙂','😉','🥰','😍','🤩','🎉','🎊','🎈','🎁',
+  '👏','🙏','💪','👍','👎','🫡','🤝','💡','📌','📎','📝','📊','📈','📉',
+  '🏆','💎','🚀','⚡','🎯','💰','💸','🛒','🛍️','💳','🏦',
+  '😅','😂','🤣','😭','😢','😤','😡','🥺','😱','🤔','🤷',
+];
+
+function mapEmojiToIcons(html) {
+  let out = html;
+  for (const [em, name] of Object.entries(_EMOJI_ICON_MAP)) {
+    out = out.replaceAll(em, `<span class="ei">${svgIcon(name)}</span>`);
+  }
+  for (const em of _EMOJI_STRIP) {
+    out = out.replaceAll(em, '');
+  }
+  return out;
+}
+
+function renderMsg(text) {
+  return mapEmojiToIcons(renderMarkdown(text));
+}
+
 function renderMarkdown(src) {
   if (!src) return "";
 
@@ -2448,8 +2482,8 @@ function addFeedbackButtons(msgDiv, agentName, text) {
   const row = document.createElement("div");
   row.className = "feedback-row";
   row.innerHTML = `
-    <button class="fb-btn" data-val="1" title="Câu trả lời tốt">👍</button>
-    <button class="fb-btn" data-val="-1" title="Câu trả lời chưa ổn">👎</button>`;
+    <button class="fb-btn" data-val="1" title="Câu trả lời tốt">${svgIcon("thumb-up")}</button>
+    <button class="fb-btn" data-val="-1" title="Câu trả lời chưa ổn">${svgIcon("thumb-down")}</button>`;
   msgDiv.appendChild(row);
   row.querySelectorAll(".fb-btn").forEach((btn) => {
     btn.addEventListener("click", async () => {

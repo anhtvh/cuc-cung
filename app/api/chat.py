@@ -46,10 +46,10 @@ def chat(
     if not req.message.strip() and not req.attachment and not req.agent_name:
         raise HTTPException(status_code=422, detail="message trống")
     if not get_limiter().is_allowed(user_id):
-        raise HTTPException(status_code=429, detail="Quá nhiều yêu cầu — thử lại sau ít phút nhé! 🙏")
+        raise HTTPException(status_code=429, detail="Model đang quay như chong chóng  Thử lại sau chút xíu nhé! 🌀")
     # I-06: cap tổng số lượt chat per user trong session window (chống cháy credit lúc demo public).
     if not get_session_limiter().is_allowed(user_id):
-        raise HTTPException(status_code=429, detail="Bạn đã dùng hết lượt chat trong phiên này — thử lại sau nhé! 🙏")
+        raise HTTPException(status_code=429, detail="Bạn đã dùng hết lượt chat trong phiên này — thử lại sau nhé!")
 
     # B-10: dùng filename + content_type để router classify đúng agent chuyên môn
     routing_message = req.message.strip()
@@ -105,7 +105,7 @@ def chat(
             # Log chi tiết để debug, nhưng KHÔNG lộ message thô của provider (vd "Error code: 404 ...")
             # ra UI — gửi câu thân thiện thay thế.
             log.exception("chat stream lỗi (user=%s, agent=%s): %s", user_id, agent.name, e)
-            yield _sse("error", {"message": "Hệ thống đang bận hoặc gặp sự cố tạm thời, anh/chị thử lại sau giây lát nhé 🙏"})
+            yield _sse("error", {"message": "Model đang quay như chong chóng 🌀 Thử lại sau chút xíu nhé!"})
         finally:
             # Guest không lưu conv_meta (history không persist qua refresh).
             # .strip() để preview ở sidebar không dính khoảng trắng/newline đầu → trông trống.
