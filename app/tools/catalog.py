@@ -80,7 +80,12 @@ class ToolCatalog:
                 continue
             for t in p.list_tools():
                 defs.append(
-                    ToolDef(name=to_wire(server, t.name), description=t.description, input_schema=t.input_schema)
+                    ToolDef(
+                        name=to_wire(server, t.name),
+                        description=t.description,
+                        input_schema=t.input_schema,
+                        stateful=t.stateful,  # giữ cờ stateful khi đổi sang tên wire (engine dùng để inject _conversation_id)
+                    )
                 )
         return defs
 

@@ -142,6 +142,7 @@ class FileExportProvider:
                         "sheet_name": {"type": "string", "description": "Tên sheet (mặc định 'Sheet1')."},
                     },
                 },
+                stateful=True,  # sinh file vào artifact dir theo conversation → cần _conversation_id
             ),
             ToolDef(
                 name="export_csv",
@@ -150,6 +151,7 @@ class FileExportProvider:
                     "hệ thống/Excel khác hoặc yêu cầu rõ định dạng CSV."
                 ),
                 input_schema=_table_schema,
+                stateful=True,  # sinh file vào artifact dir theo conversation → cần _conversation_id
             ),
             ToolDef(
                 name="export_docx",
@@ -180,6 +182,7 @@ class FileExportProvider:
                     },
                     "required": ["sections"],
                 },
+                stateful=True,  # sinh file vào artifact dir theo conversation → cần _conversation_id
             ),
         ]
 

@@ -9,9 +9,9 @@ import logging
 import re
 import time
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any, Iterator
 
+from app.core.capabilities import EMPTY_PROFILE, CapabilityResolver
 from app.core.models import MASTER_AGENT_NAME, Agent, ChatMessage, ItemStatus
 from app.llm.base import Done, TextDelta, ToolCallEvent, ToolDef, ToolExecutor, ToolResult, ToolStartEvent
 from app.tools.base import to_display
@@ -20,18 +20,9 @@ from app.tools.partner_integration import artifact_b64 as _artifact_b64
 
 log = logging.getLogger(__name__)
 
-# Upia (Flow 5): tên agent khớp seeds/demo_data.py (_UPIA_AGENT_NAME) + file chỉ thị chế độ thử nghiệm.
-_UPIA_AGENT_NAME = "Upia"
-_UPIA_EXPERIMENTAL_MD = Path(__file__).resolve().parent.parent / "agents" / "upia" / "experimental_mode.md"
-# Tool workspace CHỈ lộ khi Upia ở chế độ thử nghiệm — ngoài ra gỡ khỏi tool-set (giữ flow gốc).
-_UPIA_WORKSPACE_TOOLS = {
-    "partner-integration__save_file",
-    "partner-integration__list_workspace",
-    "partner-integration__package_project",
-}
-# Tài liệu đối tác dài hơn ngưỡng này (ký tự) → Upia experimental nạp vào RAG (scope theo
-# conversation) thay vì nhồi full text vào context mỗi lượt. ~8k ký tự ≈ 2k token.
-_UPIA_RAG_INGEST_MIN_CHARS = 8000
+# Cũ: hằng số đặc thù Upia (_UPIA_AGENT_NAME / _UPIA_EXPERIMENTAL_MD / _UPIA_WORKSPACE_TOOLS /
+# _UPIA_RAG_INGEST_MIN_CHARS) hard-code thẳng ở đây. Đã chuyển thành khai báo capability trong
+# app/core/capabilities.py — engine generic, thêm agent nâng cao không phải sửa file này.
 
 # Guardrail ngôn ngữ (deterministic, không phụ thuộc model nghe lời prompt P2-B):
 # minimax thỉnh thoảng rò ký tự Trung vào câu tiếng Việt (vd "随时", "不客气"). Mọi agent ở đây
@@ -58,7 +49,8 @@ ALWAYS_ON_SERVERS = ["system", "web-search"]
 # Plugin file-export: connector chọn được (KHÔNG always-on). Tool wire `file-export__*`.
 # Agent chỉ thấy khi Master gắn connector này → model tự quyết gọi khi user muốn tải file.
 _FILE_EXPORT_SERVER = "file-export"
-_FILE_EXPORT_PREFIX = f"{_FILE_EXPORT_SERVER}__"
+# _FILE_EXPORT_PREFIX (cũ) đã bỏ: việc inject _conversation_id nay dựa cờ ToolDef.stateful, không
+# còn match theo prefix tên tool. _FILE_EXPORT_SERVER vẫn dùng để biết agent có bật connector này.
 
 # Map server prefix → reader đọc artifact (base64) để emit nút tải. Dùng chung cho mọi
 # tool sinh file (Upia package_project + file-export); thêm plugin mới chỉ cần thêm 1 dòng.
@@ -361,8 +353,10 @@ class ChatEngine:
         self._builder_max_tool_rounds = builder_max_tool_rounds or max_tool_rounds
         # KnowledgeService (RAG) — None khi module tắt. Agent có tài liệu → inject tool knowledge_search.
         self._knowledge = knowledge
-        # Flow 5: bật chế độ thử nghiệm cho Upia (đóng gói ZIP, bỏ bước mock). Xem stream().
-        self._upia_experimental_mode = upia_experimental_mode
+        # Flow 5: capability của agent nâng cao (vd Upia experimental: đóng gói ZIP, bỏ bước mock).
+        # Cờ experimental bật/tắt qua env upia_experimental_mode; tri thức đặc thù khai báo trong
+        # app/core/capabilities.py (engine generic, không hard-code tên agent). Xem stream().
+        self._caps = CapabilityResolver(experimental_enabled=upia_experimental_mode)
 
     # L-04: giới hạn tổng system prompt ~30k chars ≈ 8k token để không bị model truncate
     _MAX_SYSTEM_CHARS = 30_000
@@ -514,6 +508,7 @@ class ChatEngine:
         extra_tools: list[ToolDef] | None = None,
         extra_executor: ToolExecutor | None = None,
         expose_workspace_tools: bool = False,
+        gated_tools: frozenset[str] = frozenset(),
         knowledge_scope: str | None = None,
     ) -> tuple[list[ToolDef], ToolExecutor]:
         """Lắp bộ tool + executor cho 1 lượt. DÙNG CHUNG cho stream() (runtime) và run_once()
@@ -528,10 +523,11 @@ class ChatEngine:
         # trùng với ALWAYS_ON_SERVERS → Anthropic API từ chối duplicate tool name).
         connectors = list(dict.fromkeys([*ALWAYS_ON_SERVERS, *agent.connectors]))
         tools = self._catalog.tools_for(connectors)
-        # Flow 5: tool workspace của Upia chỉ lộ ở chế độ thử nghiệm — ngoài ra gỡ để không đổi
-        # hành vi flow gốc (parity cả runtime stream() lẫn sandbox run_once()).
-        if not expose_workspace_tools:
-            tools = [t for t in tools if t.name not in _UPIA_WORKSPACE_TOOLS]
+        # Flow 5: tool experimental-gated (vd workspace của Upia) chỉ lộ khi expose — ngoài ra gỡ
+        # để không đổi hành vi flow gốc (parity cả runtime stream() lẫn sandbox run_once()).
+        # gated_tools do CapabilityResolver cấp (không còn set tên cứng trong engine).
+        if gated_tools and not expose_workspace_tools:
+            tools = [t for t in tools if t.name not in gated_tools]
         catalog_execute = self._catalog.execute
         if extra_tools:
             extra_names = {t.name for t in extra_tools}
@@ -613,7 +609,11 @@ class ChatEngine:
         file_export_enabled = _FILE_EXPORT_SERVER in agent.connectors
         system = self.build_system_prompt(agent, user_id, message=message, knowledge_enabled=has_kb, file_export_enabled=file_export_enabled)
         user_msg = ChatMessage(role="user", content=message)
-        tools, execute = self._assemble_tools(agent, message, has_kb)
+        # Sandbox không bật experimental → ẩn tool experimental-gated (parity flow gốc). gated_tools
+        # độc lập cờ nên vẫn lấy được tập cần ẩn.
+        tools, execute = self._assemble_tools(
+            agent, message, has_kb, gated_tools=self._caps.gated_tools(agent.name),
+        )
         text_parts: list[str] = []
         try:
             events = (
@@ -675,26 +675,29 @@ class ChatEngine:
                 skill_names = ", ".join(agent_skills)
                 message = f"Bắt đầu ngay. Thực hiện đầy đủ tất cả skill: {skill_names}. Không hỏi tôi cần gì."
 
-        # Flow 5: Upia experimental — tính sớm (dùng cho RAG ingest, prompt, tool gating).
-        _upia_exp = agent.name == _UPIA_AGENT_NAME and self._upia_experimental_mode
+        # Flow 5: capability của agent nâng cao — tính sớm (dùng cho RAG ingest, prompt, tool gating).
+        # Cũ: `_upia_exp = agent.name == "Upia" and self._upia_experimental_mode`. Nay: resolver trả
+        # profile (rỗng cho agent thường / khi experimental tắt) → engine generic, không so tên.
+        profile = self._caps.active_profile(agent.name)
         _kb_scope: str | None = None  # namespace RAG riêng theo conversation (nếu nạp doc lớn)
 
-        if _upia_exp:
-            # Nối chỉ thị experimental_mode.md vào extra_system (chạy tới hết Phase 3 →
-            # package_project → disclaimer, bỏ bước mock build/test/MR/deploy).
-            try:
-                _note = _UPIA_EXPERIMENTAL_MD.read_text(encoding="utf-8")
-                extra_system = f"{extra_system}\n\n{_note}" if extra_system else _note
-            except OSError as e:  # thiếu file → log, vẫn chạy flow thường (không chết)
-                log.warning("không đọc được experimental_mode.md: %s", e)
+        if profile is not EMPTY_PROFILE:
+            # Nối các note chế độ (vd experimental_mode.md) vào extra_system — chạy tới hết Phase 3 →
+            # package_project → disclaimer, bỏ bước mock build/test/MR/deploy.
+            for _note_path in profile.extra_system_notes:
+                try:
+                    _note = _note_path.read_text(encoding="utf-8")
+                    extra_system = f"{extra_system}\n\n{_note}" if extra_system else _note
+                except OSError as e:  # thiếu file → log, vẫn chạy flow thường (không chết)
+                    log.warning("không đọc được note capability %s: %s", _note_path, e)
 
-            # Tài liệu đối tác LỚN → nạp vào kho tri thức (scope theo conversation) thay vì nhồi
-            # full text vào context mỗi lượt. Upia truy vấn từng phần qua knowledge_search.
-            if (self._knowledge is not None and attachment
+            # Tài liệu đính kèm LỚN → nạp vào kho tri thức (scope theo conversation) thay vì nhồi
+            # full text vào context mỗi lượt. Agent truy vấn từng phần qua knowledge_search.
+            if (profile.large_doc_rag and self._knowledge is not None and attachment
                     and attachment.get("content_type") == "text" and attachment.get("text")
-                    and len(attachment["text"]) >= _UPIA_RAG_INGEST_MIN_CHARS):
+                    and len(attachment["text"]) >= profile.rag_min_chars):
                 _doc = attachment["text"]
-                _scope = f"{_UPIA_AGENT_NAME}::{conv_id}"
+                _scope = f"{agent.name}::{conv_id}"
                 _fname = attachment.get("filename") or "tai-lieu-doi-tac.txt"
                 try:
                     _res = self._knowledge.ingest_text(_scope, _fname, _doc, user_id)
@@ -705,9 +708,9 @@ class ChatEngine:
                         f"({_res['chunk_count']} đoạn). Dùng tool knowledge_search để truy vấn từng phần "
                         f"(auth, endpoint, error code, business rule…) thay vì đọc cả file.]"
                     )}
-                    log.info("Upia RAG: nạp tài liệu lớn scope=%s (%d đoạn)", _scope, _res["chunk_count"])
+                    log.info("RAG: nạp tài liệu lớn scope=%s (%d đoạn)", _scope, _res["chunk_count"])
                 except Exception as e:  # noqa: BLE001 — ingest lỗi → fallback giữ full text
-                    log.warning("Upia RAG ingest lỗi, fallback full text: %s", e)
+                    log.warning("RAG ingest lỗi, fallback full text: %s", e)
                     _kb_scope = None
 
         # RAG: có tài liệu? (agent-level docs HOẶC doc đối tác vừa nạp theo conversation cho Upia).
@@ -743,21 +746,27 @@ class ChatEngine:
 
         # Lắp tool + executor (escalate / request_update / knowledge_search / master builder) —
         # DÙNG CHUNG với run_once() qua _assemble_tools để sandbox self-test/eval khớp runtime (P2-1).
-        # Flow 5: Upia chế độ thử nghiệm → lộ tool workspace; ngoài ra gỡ (giữ flow gốc nguyên vẹn).
+        # Flow 5: agent nâng cao có profile → lộ tool experimental-gated (vd workspace của Upia);
+        # ngoài ra gỡ (giữ flow gốc nguyên vẹn). gated_tools độc lập cờ để ẩn đúng tập khi tắt.
         # knowledge_scope: doc đối tác nạp theo conversation (nếu có) → knowledge_search đúng namespace.
         tools, execute = self._assemble_tools(
             agent, message, has_kb, extra_tools=extra_tools, extra_executor=extra_executor,
-            expose_workspace_tools=_upia_exp, knowledge_scope=_kb_scope,
+            expose_workspace_tools=bool(profile.workspace_tools),
+            gated_tools=self._caps.gated_tools(agent.name), knowledge_scope=_kb_scope,
         )
 
-        if _upia_exp or file_export_enabled:
-            # Plumb conversation_id vào tool sinh file (Upia workspace + file-export): provider
-            # stateless cần biết ghi vào artifact dir nào. Inject server-side — LLM không cấp.
-            # conv_id là thread key của lượt (đã tính ở trên).
+        # Plumb conversation_id vào tool STATEFUL (ghi/đọc workspace theo cuộc): provider stateless
+        # cần biết ghi vào artifact dir nào. Inject server-side — LLM không cấp. conv_id là thread
+        # key của lượt (đã tính ở trên).
+        # Cũ: gate cứng `if _upia_exp or file_export_enabled` + `name in _UPIA_WORKSPACE_TOOLS or
+        # name.startswith(_FILE_EXPORT_PREFIX)`. Nay: dựa cờ ToolDef.stateful do provider tự khai
+        # (plug-and-play) — engine không cần biết tên tool của agent nâng cao nào.
+        _stateful_names = {t.name for t in tools if t.stateful}
+        if _stateful_names:
             _inner_execute = execute
 
-            def execute(name: str, args: dict[str, Any], _inner=_inner_execute, _cid=conv_id):  # type: ignore[misc]
-                if name in _UPIA_WORKSPACE_TOOLS or name.startswith(_FILE_EXPORT_PREFIX):
+            def execute(name: str, args: dict[str, Any], _inner=_inner_execute, _cid=conv_id, _sf=_stateful_names):  # type: ignore[misc]
+                if name in _sf:
                     args = {**args, "_conversation_id": _cid}
                 return _inner(name, args)
 
@@ -790,15 +799,16 @@ class ChatEngine:
                     tool_kwargs["max_rounds"] = self._builder_max_tool_rounds
                     if self._builder_sla_seconds:
                         tool_kwargs["sla_seconds"] = self._builder_sla_seconds
-                elif _upia_exp:
-                    # Upia experimental: stream=False vì MaaS/minimax FLAKY khi streaming lượt dài —
-                    # vừa read-timeout (thinking im lặng) vừa đóng kết nối giữa chừng
-                    # (RemoteProtocolError). Non-stream chạy ổn định tới cùng (đã verify ~17 vòng).
-                    # Bù lại không stream token, nhưng tool steps (mỗi save_file) vẫn hiện tiến trình.
-                    # parallel_tools=True: save_file độc lập → ghi NHIỀU file/vòng → ÍT vòng hơn,
-                    # nhanh hơn, đỡ chạm trần (khác builder vì save_file không có thứ tự phụ thuộc).
-                    tool_kwargs["stream"] = False
-                    tool_kwargs["parallel_tools"] = True
+                elif profile.execution is not None:
+                    # Agent nâng cao chạy lượt DÀI (vd Upia experimental): tinh chỉnh tool-loop theo
+                    # profile.execution. Upia: stream=False vì MaaS/minimax FLAKY khi streaming lượt
+                    # dài (read-timeout khi thinking im lặng + RemoteProtocolError giữa chừng) — non-
+                    # stream chạy ổn tới cùng (đã verify ~17 vòng); tool steps vẫn hiện tiến trình.
+                    # parallel_tools=True: save_file độc lập → ghi NHIỀU file/vòng → ít vòng, nhanh,
+                    # đỡ chạm trần (khác builder vì không có thứ tự phụ thuộc). Trần + SLA dùng mức
+                    # builder (cao hơn mặc định) để không dừng giữa chừng.
+                    tool_kwargs["stream"] = profile.execution.stream
+                    tool_kwargs["parallel_tools"] = profile.execution.parallel_tools
                     tool_kwargs["max_rounds"] = self._builder_max_tool_rounds
                     if self._builder_sla_seconds:
                         tool_kwargs["sla_seconds"] = self._builder_sla_seconds

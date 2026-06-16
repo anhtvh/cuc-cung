@@ -307,6 +307,7 @@ class PartnerIntegrationProvider:
                     },
                     "required": ["path", "content"],
                 },
+                stateful=True,  # ghi vào workspace theo conversation → cần _conversation_id
             ),
             ToolDef(
                 name="list_workspace",
@@ -316,6 +317,7 @@ class PartnerIntegrationProvider:
                     "không dựa vào trí nhớ hội thoại."
                 ),
                 input_schema={"type": "object", "properties": {}},
+                stateful=True,  # đọc workspace theo conversation → cần _conversation_id
             ),
             ToolDef(
                 name="package_project",
@@ -331,6 +333,7 @@ class PartnerIntegrationProvider:
                     },
                     "required": ["partner_name"],
                 },
+                stateful=True,  # đóng gói workspace theo conversation → cần _conversation_id
             ),
             ToolDef(
                 name="go_build",

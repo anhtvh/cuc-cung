@@ -20,6 +20,11 @@ class ToolDef:
     name: str
     description: str
     input_schema: dict[str, Any] = field(default_factory=lambda: {"type": "object", "properties": {}})
+    # stateful=True: tool GHI trạng thái theo cuộc hội thoại (workspace/đĩa) → engine inject
+    # `_conversation_id` server-side khi gọi (provider stateless cần biết ghi vào artifact dir nào).
+    # Default False ⇒ tool thuần đọc/tính không bị đụng. Provider tự khai báo → engine không cần
+    # biết tên tool (plug-and-play, thay cho set tên cứng + check prefix trong chat_engine).
+    stateful: bool = False
 
 
 @dataclass
