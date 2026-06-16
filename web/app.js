@@ -344,7 +344,7 @@ async function showWelcome() {
       </button>
       <button class="welcome-path wp-create">
         <span class="welcome-path-icon">${svgIcon("sparkle")}</span>
-        <div class="welcome-path-title">Đặt hàng trợ lý riêng</div>
+        <div class="welcome-path-title">Tạo trợ lý (agent) riêng</div>
         <div class="welcome-path-desc">Mô tả việc cần → mình tạo chuyên gia ngay tức thì</div>
       </button>
     </div>
