@@ -19,7 +19,9 @@ def test_tabs_guest(make_page):
     page.goto("/web/", wait_until="networkidle")
     expect(page.locator('[data-tab="home"]')).to_be_visible()
     expect(page.locator('[data-tab="catalog"]')).to_be_visible()
-    expect(page.locator("#myagents-tab")).to_be_hidden()
+    # Guest-trial (chủ đích sản phẩm): guest xem được tab "Của tôi" để dùng/xem trial agents
+    # họ đã tạo (web/app.js refreshTabsForUser). Tab quản trị vẫn chỉ dành cho admin.
+    expect(page.locator("#myagents-tab")).to_be_visible()
     expect(page.locator("#review-tab")).to_be_hidden()
     expect(page.locator("#stats-tab")).to_be_hidden()
 
@@ -99,10 +101,18 @@ def test_mobile_viewport_core_usable(make_page):
     assert scroll_w <= 400, f"Tràn ngang trên mobile: scrollWidth={scroll_w}"
 
 
-# ── Guest bị chặn tạo agent → mời đăng nhập ─────────────────────────────
-def test_guest_create_prompts_login(make_page):
+# ── Guest-trial: guest tạo được agent (trial mode), được mời đăng nhập để giữ ──────
+def test_guest_can_open_create_wizard(make_page):
+    """Chủ đích sản phẩm: guest mở được wizard tạo agent (trial), KHÔNG bị ép đăng nhập.
+    Lời mời đăng nhập xuất hiện dưới dạng banner trial ở tab 'Của tôi', không chặn cứng."""
     page = make_page()  # guest
     page.goto("/web/", wait_until="networkidle")
     page.evaluate("openQuickCreate()")
-    expect(page.locator("#qc-modal")).to_be_hidden()    # KHÔNG mở wizard
-    expect(page.locator("#auth-modal")).to_be_visible()  # mở modal đăng nhập
+    expect(page.locator("#qc-modal")).to_be_visible()    # wizard MỞ (trial mode)
+    expect(page.locator("#auth-modal")).to_be_hidden()   # KHÔNG ép đăng nhập
+
+    # Tab "Của tôi" của guest vào được + ở chế độ thử nghiệm (empty-state dùng từ "thử nghiệm",
+    # khác user thường — xác nhận guest đang ở trial mode, không bị tường đăng nhập chặn).
+    page.evaluate("closeQuickCreate()")
+    page.locator("#myagents-tab").click()
+    expect(page.locator("#myagents-list")).to_contain_text("thử nghiệm")
