@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from sqlalchemy import Boolean, Engine, ForeignKey, Index, Integer, Text, case, create_engine, delete, event, func, select, text
+from sqlalchemy import Boolean, Engine, ForeignKey, Index, Integer, Text, case, create_engine, delete, event, func, select, text, update
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 from app.core.models import Agent, ItemStatus, Skill, Visibility, now_iso
@@ -312,6 +312,22 @@ class SqlAgentRepo:
             s.execute(delete(ConvMetaRow).where(ConvMetaRow.agent_name == name))
             s.execute(delete(FeedbackRow).where(FeedbackRow.agent_name == name))
             s.execute(delete(AgentRow).where(AgentRow.name == name))
+
+
+    def reassign_guest(self, guest_id: str, real_user_id: str) -> int:
+        """Khi guest đăng nhập: chuyển created_by=guest_id → real_user_id cho agents + skills."""
+        with Session(self._engine) as s, s.begin():
+            n = s.execute(
+                update(AgentRow).where(AgentRow.created_by == guest_id).values(created_by=real_user_id)
+            ).rowcount
+        return n
+
+    def reassign_guest_skills(self, guest_id: str, real_user_id: str) -> int:
+        with Session(self._engine) as s, s.begin():
+            n = s.execute(
+                update(SkillRow).where(SkillRow.created_by == guest_id).values(created_by=real_user_id)
+            ).rowcount
+        return n
 
 
 class SqlSkillRepo:

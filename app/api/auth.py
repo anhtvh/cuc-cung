@@ -84,9 +84,16 @@ async def google_callback(
     )
     user = UserInfo(id=row.id, email=row.email, name=row.name or "", picture=row.picture or "", role=row.role)
 
+    guest_sid = request.cookies.get("guest_sid")
+    if guest_sid and guest_sid.startswith("guest_"):
+        migrated = c.agents.reassign_guest(guest_sid, user.email) + c.agents.reassign_guest_skills(guest_sid, user.email)
+        if migrated:
+            log.info("migrated %d trial items: %s → %s", migrated, guest_sid, user.email)
+
     response = RedirectResponse("/web/", status_code=302)
     _set_session(response, user, c.settings)
     response.delete_cookie(_STATE_COOKIE)  # state dùng 1 lần
+    response.delete_cookie("guest_sid")
     return response
 
 
@@ -96,7 +103,7 @@ class LoginRequest(BaseModel):
 
 
 @router.post("/login")
-def admin_login(body: LoginRequest, c: Container = Depends(get_container)):
+def admin_login(body: LoginRequest, request: Request, c: Container = Depends(get_container)):
     if not c.settings.admin_email:
         raise HTTPException(status_code=501, detail="Admin chưa được cấu hình")
 
@@ -111,11 +118,19 @@ def admin_login(body: LoginRequest, c: Container = Depends(get_container)):
         raise HTTPException(status_code=403, detail="Tài khoản không có quyền admin trong cấu hình hệ thống")
 
     user = UserInfo(id=row.id, email=row.email, name=row.name or "Admin", picture="", role="admin")
+
+    guest_sid = request.cookies.get("guest_sid")
+    if guest_sid and guest_sid.startswith("guest_"):
+        migrated = c.agents.reassign_guest(guest_sid, user.email) + c.agents.reassign_guest_skills(guest_sid, user.email)
+        if migrated:
+            log.info("migrated %d trial items: %s → %s", migrated, guest_sid, user.email)
+
     response_data = {"ok": True, "email": user.email, "name": user.name, "role": user.role}
 
     from fastapi.responses import JSONResponse
     response = JSONResponse(response_data)
     _set_session(response, user, c.settings)
+    response.delete_cookie("guest_sid")
     return response
 
 
