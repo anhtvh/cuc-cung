@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🐾 Cục Cưng
+# Cục Cưng - Agent Platform
 
 ### _Có việc gì khó, để Cục Cưng lo._
 
@@ -23,7 +23,7 @@
 
 ---
 
-## ✨ Insight — Hành trình ba bước
+## ✨ Insight
 
 Với **Cục Cưng – Agent Platform**, có hai cách approach để tạo agent:
 
