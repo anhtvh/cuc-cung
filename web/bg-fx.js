@@ -215,8 +215,24 @@
   // Theo dõi "chuột rảnh" để bật rắn; tách 2 loại tương tác:
   //  • rê chuột  → chỉ reset đồng hồ rảnh + lái rắn (KHÔNG tắt) → chơi được.
   //  • dứt khoát (click/gõ phím/cuộn) → tắt rắn (quay lại làm việc).
-  const IDLE_MS = 3000;
+  const IDLE_MS = 5000;            // chuột rảnh đủ lâu mới bật rắn
+  const CHAT_SEL = ".chat-main";   // rắn chỉ sống trong ô chat này
   let lastActivity = performance.now();
+  // rect ô chat theo toạ độ viewport (canvas fixed inset:0 → trùng hệ toạ độ).
+  // null nếu không ở trang chat hoặc ô quá nhỏ.
+  function getChatRect() {
+    const panel = document.getElementById("panel-chat");
+    if (!panel || !panel.classList.contains("active")) return null;
+    const el = document.querySelector(CHAT_SEL);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    if (r.width < 120 || r.height < 120) return null;
+    return r;
+  }
+  function pointerInside(r) {
+    return pointer.active && pointer.x >= r.left && pointer.x <= r.right
+                          && pointer.y >= r.top && pointer.y <= r.bottom;
+  }
   function markActivity(dismiss) {
     lastActivity = performance.now();
     if (dismiss) snake.stop();
@@ -229,36 +245,45 @@
   window.addEventListener("blur", () => { clearPointer(); lastActivity = performance.now(); }, { passive: true });
   window.addEventListener("touchend", clearPointer, { passive: true });
 
-  /* ─── snake mode (easter egg: chuột rảnh 3s thì rắn ra, ăn đốm sáng) ─────
-     • Hiện khi chuột đứng yên 3s; rê chuột → đầu rắn bám con trỏ (chơi được);
-       không rê → tự bò tìm đốm gần nhất. Click/gõ phím/cuộn → tắt.
-     • Ăn đốm xong respawn đốm gần chỗ cũ (dời cả hx/hy) → nền không trống.
-     • Vẽ chung canvas, cùng tông teal/green; fade-in/out mượt. */
+  /* ─── snake mode (easter egg: chuột rảnh 5s thì rắn ra TRONG Ô CHAT) ─────
+     • Chỉ sống trong .chat-main (rect = snake.bounds); rời ô chat → tắt.
+     • Hiện khi chuột đứng yên 5s & con trỏ trong ô chat; rê chuột (trong ô)
+       → đầu rắn bám con trỏ; không rê → tự bò tìm đốm gần nhất. Click/gõ/cuộn → tắt.
+     • Ăn đốm xong respawn đốm NGAY TRONG ô chat (dời cả hx/hy) → ô không trống.
+     • Vẽ clip trong rect, cùng tông teal/green; fade-in/out mượt. */
   const snake = {
     active: false, fadingOut: false, fade: 0,
+    bounds: null,       // rect ô chat đang giam rắn (toạ độ viewport)
     head: { x: 0, y: 0, vx: 1, vy: 0 },
     pts: [],            // lịch sử vị trí head → thân
     len: 8, target: null,
     SPEED: 3.4, TURN: 0.12, EAT_R: 22, MAX_LEN: 26, SEG_GAP: 4,
   };
 
-  snake.start = function () {
-    if (reduce) return;
+  snake.start = function (rect) {
+    if (reduce || !rect) return;
     snake.fadingOut = false;
     if (snake.active) return;        // idempotent: 1 rắn duy nhất
     snake.active = true;
+    snake.bounds = rect;
     snake.fade = 0; snake.len = 8; snake.target = null;
-    snake.head.x = W * 0.5; snake.head.y = H * 0.5;
+    snake.head.x = rect.left + rect.width * 0.5;
+    snake.head.y = rect.top + rect.height * 0.5;
     snake.head.vx = 1; snake.head.vy = 0;
     snake.pts = [{ x: snake.head.x, y: snake.head.y }];
   };
   snake.stop = function () { if (snake.active) snake.fadingOut = true; };
 
-  snake._pickTarget = function () {
+  snake._inBounds = function (p, b) {
+    return p.x >= b.left && p.x <= b.right && p.y >= b.top && p.y <= b.bottom;
+  };
+
+  snake._pickTarget = function (b) {
     let best = null, bd = Infinity;
     for (let i = 0; i < particles.length; i++) {
       const p = particles[i];
-      if (p.tier === 0) continue;   // chỉ ăn sao/dot, bỏ glow blob
+      if (p.tier === 0) continue;             // chỉ ăn sao/dot, bỏ glow blob
+      if (b && !snake._inBounds(p, b)) continue;  // chỉ nhắm đốm trong ô chat
       const dx = p.x - snake.head.x, dy = p.y - snake.head.y;
       const d2 = dx * dx + dy * dy;
       if (d2 < bd) { bd = d2; best = p; }
@@ -266,15 +291,17 @@
     snake.target = best;
   };
 
-  // respawn đốm gần chỗ cũ (120–260px), xa đầu rắn; QUAN TRỌNG: dời cả hx/hy
-  // để lò xo "kéo về nhà" không lôi nó về chỗ trống cũ.
-  snake._respawn = function (p) {
+  // respawn đốm gần chỗ cũ (120–260px) nhưng GIAM TRONG ô chat, xa đầu rắn;
+  // QUAN TRỌNG: dời cả hx/hy để lò xo "kéo về nhà" không lôi nó ra ngoài.
+  snake._respawn = function (p, b) {
+    const lo = b ? b.left + 8 : 8, ro = b ? b.right - 8 : W - 8;
+    const to = b ? b.top + 8 : 8, bo = b ? b.bottom - 8 : H - 8;
     let nx, ny, tries = 0;
     do {
       const ang = Math.random() * Math.PI * 2;
       const dist = 120 + Math.random() * 140;
-      nx = clamp(p.x + Math.cos(ang) * dist, 8, W - 8);
-      ny = clamp(p.y + Math.sin(ang) * dist, 8, H - 8);
+      nx = clamp(p.x + Math.cos(ang) * dist, lo, ro);
+      ny = clamp(p.y + Math.sin(ang) * dist, to, bo);
       tries++;
     } while (tries < 6 && Math.hypot(nx - snake.head.x, ny - snake.head.y) < 90);
     p.x = nx; p.y = ny; p.hx = nx; p.hy = ny; p.pvx = 0; p.pvy = 0;
@@ -282,35 +309,42 @@
 
   snake.update = function () {
     if (!snake.active) return;
+    const b = snake.bounds;
+    if (!b) return;                              // mất ô chat → step() lo việc tắt
     let tx, ty;
-    if (pointer.active) { tx = pointer.x; ty = pointer.y; }      // rê chuột → lái
+    if (pointerInside(b)) { tx = pointer.x; ty = pointer.y; }   // rê chuột trong ô → lái
     else {
-      if (!snake.target) snake._pickTarget();
+      if (!snake.target || !snake._inBounds(snake.target, b)) snake._pickTarget(b);
       if (snake.target) { tx = snake.target.x; ty = snake.target.y; }
-      else { tx = snake.head.x + snake.head.vx; ty = snake.head.y + snake.head.vy; }
+      else { tx = b.left + b.width * 0.5; ty = b.top + b.height * 0.5; }  // hết mồi → về giữa ô
     }
-    // steer: lerp hướng vận tốc về mục tiêu (giới hạn rẽ → bò mềm)
+    // steer hướng mục tiêu + lái mềm quay vào trong khi tới gần mép ô
     let dx = tx - snake.head.x, dy = ty - snake.head.y;
     const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+    const pad = 26;
+    if (snake.head.x < b.left + pad)   dx += (b.left + pad - snake.head.x) / pad;
+    if (snake.head.x > b.right - pad)  dx -= (snake.head.x - (b.right - pad)) / pad;
+    if (snake.head.y < b.top + pad)    dy += (b.top + pad - snake.head.y) / pad;
+    if (snake.head.y > b.bottom - pad) dy -= (snake.head.y - (b.bottom - pad)) / pad;
     snake.head.vx += (dx - snake.head.vx) * snake.TURN;
     snake.head.vy += (dy - snake.head.vy) * snake.TURN;
     const vl = Math.hypot(snake.head.vx, snake.head.vy) || 1;
     snake.head.vx /= vl; snake.head.vy /= vl;
     snake.head.x += snake.head.vx * snake.SPEED;
     snake.head.y += snake.head.vy * snake.SPEED;
-    if (snake.head.x < 0) snake.head.x = W; else if (snake.head.x > W) snake.head.x = 0;
-    if (snake.head.y < 0) snake.head.y = H; else if (snake.head.y > H) snake.head.y = 0;
+    snake.head.x = clamp(snake.head.x, b.left, b.right);   // clamp cứng — không lọt ra
+    snake.head.y = clamp(snake.head.y, b.top, b.bottom);
     snake.pts.unshift({ x: snake.head.x, y: snake.head.y });
     const maxPts = snake.MAX_LEN * snake.SEG_GAP + 4;
     if (snake.pts.length > maxPts) snake.pts.length = maxPts;
-    // đớp đốm gần đầu
+    // đớp đốm trong ô chat
     for (let i = 0; i < particles.length; i++) {
       const p = particles[i];
-      if (p.tier === 0) continue;
+      if (p.tier === 0 || !snake._inBounds(p, b)) continue;
       if (Math.hypot(p.x - snake.head.x, p.y - snake.head.y) < snake.EAT_R) {
         if (snake.len < snake.MAX_LEN) snake.len++;
         if (p === snake.target) snake.target = null;
-        snake._respawn(p);
+        snake._respawn(p, b);
       }
     }
   };
@@ -322,6 +356,9 @@
       if (snake.fade <= 0) { snake.fade = 0; snake.active = false; snake.fadingOut = false; return; }
     } else if (snake.fade < 1) snake.fade = Math.min(1, snake.fade + 0.06);
 
+    const b = snake.bounds;
+    ctx.save();
+    if (b) { ctx.beginPath(); ctx.rect(b.left, b.top, b.width, b.height); ctx.clip(); }  // glow không tràn ra ngoài ô
     ctx.globalCompositeOperation = "lighter";
     const segs = Math.min(snake.len, Math.floor(snake.pts.length / snake.SEG_GAP));
     for (let s = segs - 1; s >= 0; s--) {
@@ -345,6 +382,7 @@
     }
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = "source-over";
+    ctx.restore();
   };
 
   /* ─── physics ─── */
@@ -410,8 +448,14 @@
       if (p.x < -m) p.x = W + m; else if (p.x > W + m) p.x = -m;
       if (p.y < -m) p.y = H + m; else if (p.y > H + m) p.y = -m;
     }
-    // chuột rảnh đủ lâu → rắn ra (screensaver). reduce-motion thì bỏ qua (snake.start tự chặn).
-    if (!snake.active && performance.now() - lastActivity > IDLE_MS) snake.start();
+    // rắn chỉ sống trong ô chat: bật khi chuột rảnh 5s & con trỏ trong ô; rời ô → tắt.
+    const chatRect = getChatRect();
+    if (snake.active) {
+      if (chatRect) snake.bounds = chatRect;    // theo dõi rect (resize/scroll/đổi layout)
+      else snake.stop();                         // rời trang chat / ô biến mất → tắt
+    } else if (chatRect && performance.now() - lastActivity > IDLE_MS && pointerInside(chatRect)) {
+      snake.start(chatRect);
+    }
     snake.update();
   }
 

@@ -214,6 +214,49 @@ def _get_mr(ref: str) -> dict[str, Any]:
     return mr
 
 
+# ── Chế độ GIẢ LẬP (simulation) ───────────────────────────────────────────────
+# Khi MR không có trong fixture (vd repo nội bộ thật như aqr/bill/provider-evnhcm),
+# nghĩa là môi trường này CHƯA kết nối được GitLab nội bộ. Thay vì raise (chặn flow),
+# tool trả payload báo "giả lập" để agent tự dựng MR hợp lý + review đầy đủ, và NÓI RÕ
+# với user đây là kết quả mô phỏng. Note do agent post / file review vẫn lưu được.
+_SIM_NOTE = (
+    "MÔI TRƯỜNG GIẢ LẬP — chưa kết nối được GitLab nội bộ (gitlab.zalopay.vn). "
+    "Không có MR thật để fetch. Hãy NÓI RÕ với user đây là kết quả MÔ PHỎNG, tự giả "
+    "lập một MR hợp lý cho repo này (mục đích thay đổi + diff điển hình của loại repo đó) "
+    "rồi review đầy đủ theo checklist RC/IM/GP — nêu cả điểm được lẫn chưa được."
+)
+
+
+def _try_parse_mr_ref(ref: str) -> int | None:
+    """Như `_parse_mr_ref` nhưng trả None thay vì raise (ref không có iid → giả lập)."""
+    try:
+        return _parse_mr_ref(ref)
+    except ValueError:
+        return None
+
+
+def _project_from_ref(ref: str) -> str:
+    """Đoán đường dẫn repo (group/.../name) từ ref để hiển thị/đặt tên file giả lập."""
+    ref = str(ref).strip()
+    m = re.search(r"gitlab\.[\w.]+/(.+?)(?:/-/|$)", ref)  # URL: .../<path>/-/merge_requests...
+    if m:
+        return m.group(1).rstrip("/")
+    m = re.match(r"([\w\-./]+)!\d+", ref)  # group/repo!iid
+    if m:
+        return m.group(1)
+    if "/" in ref and not ref.lstrip().startswith("http"):  # 'group/repo' trần
+        return ref.rstrip("/")
+    return "(không rõ repo)"
+
+
+def _review_key(ref: str, iid: int | None) -> str:
+    """Khóa đặt tên file review: mr_{iid} nếu có iid, else slug hóa từ repo path."""
+    if iid is not None:
+        return f"mr_{iid}"
+    slug = re.sub(r"[^\w\-]+", "_", _project_from_ref(ref)).strip("_") or "sim"
+    return f"mr_{slug}"
+
+
 class GitlabProvider:
     server_name = "gitlab"
     is_mock = True
@@ -291,8 +334,25 @@ class GitlabProvider:
         ]
 
     def call(self, tool_name: str, args: dict[str, Any]) -> str:
+        ref = args.get("mr", "")
+        iid = _try_parse_mr_ref(ref)
+        simulated = _SAMPLE_MRS.get(iid) is None  # MR không có trong fixture → giả lập
+
         if tool_name == "get_mr":
-            mr = _get_mr(args.get("mr", ""))
+            if simulated:
+                # Không fetch được MR thật → báo agent chuyển sang giả lập.
+                return json.dumps(
+                    {
+                        "simulation": True,
+                        "fetched": False,
+                        "ref": ref,
+                        "iid": iid,
+                        "project": _project_from_ref(ref),
+                        "note": _SIM_NOTE,
+                    },
+                    ensure_ascii=False,
+                )
+            mr = _get_mr(ref)
             return json.dumps(
                 {
                     "iid": mr["iid"],
@@ -310,19 +370,47 @@ class GitlabProvider:
             )
 
         if tool_name == "get_mr_diff":
-            mr = _get_mr(args.get("mr", ""))
-            return mr["diff"]
+            if simulated:
+                return json.dumps(
+                    {
+                        "simulation": True,
+                        "fetched": False,
+                        "ref": ref,
+                        "project": _project_from_ref(ref),
+                        "note": _SIM_NOTE + " Tự dựng một diff điển hình cho repo này để review.",
+                    },
+                    ensure_ascii=False,
+                )
+            return _get_mr(ref)["diff"]
 
         if tool_name == "get_mr_discussions":
-            mr = _get_mr(args.get("mr", ""))
+            if simulated:
+                return json.dumps(
+                    {"discussions": [], "simulation": True, "note": _SIM_NOTE},
+                    ensure_ascii=False,
+                )
+            mr = _get_mr(ref)
             existing = list(mr["discussions"]) + self._posted_notes.get(mr["iid"], [])
             return json.dumps({"discussions": existing}, ensure_ascii=False)
 
         if tool_name == "post_mr_note":
-            mr = _get_mr(args.get("mr", ""))
             body = str(args.get("body", "")).strip()
             if not body:
                 raise ValueError("body rỗng — không có nội dung để post")
+            if simulated:
+                # Không có MR thật để post → mô phỏng thao tác, không gắn vào fixture nào.
+                project = _project_from_ref(ref)
+                return json.dumps(
+                    {
+                        "note_id": "sim",
+                        "mr_ref": ref,
+                        "project": project,
+                        "simulation": True,
+                        "note": "GIẢ LẬP — chưa kết nối GitLab nội bộ nên không post note thật.",
+                    },
+                    ensure_ascii=False,
+                )
+            mr = _get_mr(ref)
             note = {
                 "author": "MrReviewer",
                 "created_at": datetime.now(timezone.utc).astimezone().isoformat(),
@@ -341,16 +429,22 @@ class GitlabProvider:
             )
 
         if tool_name == "save_review":
-            mr = _get_mr(args.get("mr", ""))
             content = str(args.get("content", "")).strip()
             if not content:
                 raise ValueError("content rỗng — không có nội dung review để lưu")
+            # File review LUÔN lưu thật, kể cả khi MR là giả lập (key = iid hoặc slug repo).
+            key = _review_key(ref, iid)
             _REVIEWS_DIR.mkdir(parents=True, exist_ok=True)
-            path = _REVIEWS_DIR / f"mr_{mr['iid']}.md"
+            path = _REVIEWS_DIR / f"{key}.md"
             path.write_text(content, encoding="utf-8")
-            log.info("save_review: ghi review MR !%s ra %s", mr["iid"], path)
+            log.info("save_review: ghi review %s ra %s (simulation=%s)", key, path, simulated)
             return json.dumps(
-                {"saved": True, "path": str(path), "mr_iid": mr["iid"]},
+                {
+                    "saved": True,
+                    "path": str(path),
+                    "mr_iid": iid,
+                    "simulation": simulated,
+                },
                 ensure_ascii=False,
             )
 

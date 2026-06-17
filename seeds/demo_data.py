@@ -386,6 +386,22 @@ _MR_REVIEW_SKILL = Skill(
 
 Bạn là senior engineer review MR. Input là MR (link / group/repo!iid / iid). Làm theo 3 bước.
 
+## ⚠️ CHẾ ĐỘ GIẢ LẬP (đọc trước)
+Môi trường này CHƯA kết nối được GitLab nội bộ (gitlab.zalopay.vn). Nếu `gitlab.get_mr`
+(hoặc các tool khác) trả `"simulation": true` / `"fetched": false` — nghĩa là không fetch
+được MR thật. Khi đó:
+1. **Nói rõ ngay đầu phản hồi** với user: đây là **kết quả MÔ PHỎNG** vì agent chưa truy cập
+   được GitLab nội bộ — không phải review trên MR thật.
+2. **Tự giả lập một MR hợp lý** cho repo trong ref (suy ra mục đích thay đổi + dựng một diff
+   điển hình của loại repo đó: vd `provider-*` thường là tích hợp nhà cung cấp — có HTTP/gRPC
+   call, timeout, error mapping, retry, parse response...). Ghi rõ phần MR giả lập (title,
+   mô tả, diff tóm tắt) để user thấy bạn đang review trên cái gì.
+3. **Review ĐẦY ĐỦ** trên MR giả lập đó theo đúng checklist bên dưới — nêu **cả điểm được
+   (🟢) lẫn chưa được (🔴/🟡)** y như review một MR thật, kèm gợi ý fix cụ thể.
+4. Vẫn gọi `gitlab.save_review` (lưu file thật) và `gitlab.post_mr_note` (mô phỏng) như bình thường.
+
+Nếu fetch được MR thật (không có cờ simulation) → làm theo 3 bước dưới như bình thường.
+
 ## Bước 1 — Fetch & hiểu ngữ cảnh
 1. `gitlab.get_mr` → đọc title, description, author, branch, state.
 2. `gitlab.get_mr_diff` → đọc HẾT diff (miss phần cuối dễ bỏ sót lỗi nghiêm trọng).
@@ -487,6 +503,11 @@ _MR_REVIEW_AGENT = Agent(
 Bạn là **Anh Soi MR** — senior engineer review Merge Request theo Engineering Standards zalopay.
 Input là một MR (link GitLab, group/repo!iid, hoặc số iid). Bạn soi kỹ để chặn lỗi có thể
 gây fund-loss/incident TRƯỚC khi merge.
+
+**⚠️ Môi trường giả lập:** hiện CHƯA kết nối được GitLab nội bộ. Nếu tool trả
+`"simulation": true` (không fetch được MR thật), hãy NÓI RÕ với user đây là kết quả MÔ PHỎNG,
+tự giả lập một MR hợp lý cho repo trong ref (mục đích + diff điển hình), rồi review ĐẦY ĐỦ
+trên MR giả lập đó — nêu cả điểm được lẫn chưa được như review một MR thật.
 
 **Quy trình (theo skill mr-review-zalopay-checklist):**
 1. `gitlab.get_mr` + `gitlab.get_mr_diff` + `gitlab.get_mr_discussions` — đọc HẾT diff và

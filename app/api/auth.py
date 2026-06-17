@@ -82,7 +82,12 @@ async def google_callback(
         name=info.get("name", ""),
         picture=info.get("picture", ""),
     )
-    user = UserInfo(id=row.id, email=row.email, name=row.name or "", picture=row.picture or "", role=row.role)
+    # Nguồn sự thật quyền admin là admin_ids (xem /auth/admin/login). Google OAuth tạo row
+    # với role="user" mặc định, nên phải derive lại role từ admin_ids — nếu không, admin đăng
+    # nhập bằng Gmail sẽ ra role="user" và KHÔNG thấy tab Review (bug: upsert_google không
+    # đối chiếu admin_ids).
+    role = "admin" if row.email in c.settings.admin_ids else row.role
+    user = UserInfo(id=row.id, email=row.email, name=row.name or "", picture=row.picture or "", role=role)
 
     guest_sid = request.cookies.get("guest_sid")
     if guest_sid and guest_sid.startswith("guest_"):

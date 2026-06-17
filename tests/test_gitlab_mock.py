@@ -42,9 +42,28 @@ class TestGitlabMock:
         assert out["target_branch"] == "master"
         assert "MÔ PHỎNG" in out["note"]
 
-    def test_get_mr_not_found(self):
-        with pytest.raises(ValueError):
-            self.p.call("get_mr", {"mr": "999"})
+    def test_get_mr_unknown_goes_simulation(self):
+        # MR không có trong fixture → chế độ giả lập (không raise), báo simulation cho agent.
+        out = json.loads(self.p.call("get_mr", {"mr": "999"}))
+        assert out["simulation"] is True
+        assert out["fetched"] is False
+        assert "GIẢ LẬP" in out["note"]
+
+    def test_get_mr_repo_url_no_iid_simulation(self):
+        # Link trang list MR (không có iid) như repo nội bộ thật → giả lập, đoán đúng repo path.
+        ref = "https://gitlab.zalopay.vn/aqr/bill/provider-evnhcm/-/merge_requests"
+        out = json.loads(self.p.call("get_mr", {"mr": ref}))
+        assert out["simulation"] is True
+        assert out["project"] == "aqr/bill/provider-evnhcm"
+
+    def test_save_review_simulation_uses_repo_slug(self, tmp_path, monkeypatch):
+        import app.tools.mock.gitlab as gl
+
+        monkeypatch.setattr(gl, "_REVIEWS_DIR", tmp_path / "reviews")
+        ref = "aqr/bill/provider-evnhcm"
+        out = json.loads(self.p.call("save_review", {"mr": ref, "content": "# Review giả lập"}))
+        assert out["saved"] is True and out["simulation"] is True
+        assert (tmp_path / "reviews" / "mr_aqr_bill_provider-evnhcm.md").exists()
 
     def test_get_mr_diff_has_rc_violation(self):
         # MR !101 phải chứa pattern map RESOURCE_EXHAUSTED → FAILED (RC-2) và bỏ timeout (RC-9).
