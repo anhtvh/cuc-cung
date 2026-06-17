@@ -31,12 +31,6 @@ Với **Cục Cưng – Agent Platform**, có hai cách approach để tạo age
 
 - **Pro-code** — khai báo **connector** hoặc **capability** theo kiến trúc **plug-and-play**, giúp mở rộng khả năng của nền tảng mà không cần chỉnh sửa engine.
 
-|      | Bước              | Cam kết                                                 | Điều thực sự diễn ra |
-| :--: | ----------------- | ------------------------------------------------------- | ---------------------- |
-| **01** | **Khởi tạo**   | _Mô tả nhu cầu bằng lời. Cục Cưng lo phần còn lại._   | Master Agent phỏng vấn, tạo *skill* chuẩn hóa và sinh *agent con* sẵn sàng dùng — không cần code, không cần cấu hình. |
-| **02** | **Trải nghiệm** | _Dùng trong công việc thực. Tinh chỉnh qua hội thoại._ | Agent là bản draft của riêng bạn — áp dụng vào việc thật, phản hồi để Cục Cưng điều chỉnh skill và persona. |
-| **03** | **Lan tỏa**    | _Từ kinh nghiệm cá nhân. Thành tri thức tập thể._     | Submit để phê duyệt. Qua governance (maker-checker), agent chuyển `active` — cả tổ chức gọi được theo tên hoặc mô tả ý định. |
-
 ### Vấn đề được giải quyết
 
 - 🧩 **Kiến thức phân tán** — nghiệp vụ nằm rải rác trong prompt cá nhân của mỗi người.
@@ -44,6 +38,14 @@ Với **Cục Cưng – Agent Platform**, có hai cách approach để tạo age
 - 🔍 **Thiếu quản trị** — không ai biết ai tạo gì, chất lượng ra sao, có thể dùng lại không.
 
 > Lời giải: **đóng gói tri thức thành skill chuẩn hóa**, lưu trong registry tập trung, tái sử dụng và kiểm soát chất lượng được — thay vì để tri thức nằm phân tán.
+
+### Tạo agent No-code
+
+|      | Bước              | Cam kết                                                 | Điều thực sự diễn ra                                                                                                         |
+| :--: | ----------------- | ------------------------------------------------------- |------------------------------------------------------------------------------------------------------------------------------|
+| **01** | **Khởi tạo**   | _Mô tả nhu cầu bằng lời. Cục Cưng lo phần còn lại._   | Master Agent phỏng vấn, tạo *skill* chuẩn hóa và sinh *agent con* sẵn sàng dùng — không cần code, không cần cấu hình.        |
+| **02** | **Trải nghiệm** | _Dùng trong công việc thực. Tinh chỉnh qua hội thoại._ | Agent là bản private của riêng bạn — áp dụng vào việc thật, phản hồi để Cục Cưng điều chỉnh skill và persona.                |
+| **03** | **Lan tỏa**    | _Từ kinh nghiệm cá nhân. Thành tri thức tập thể._     | Submit để phê duyệt. Qua governance (maker-checker), agent chuyển `active` — cả tổ chức gọi được theo tên hoặc mô tả ý định. |
 
 ### 🔌 Dành cho kỹ sư — Plug-and-play (pro-code)
 
@@ -65,18 +67,18 @@ Triết lý: **thêm tính năng = khai báo, không sửa engine**. Engine là 
 
 ## 🚀 Tính năng chính
 
-|       | Tính năng                        | Mô tả |
-| :---: | -------------------------------- | ----- |
-| 🧠    | **Master Agent**                 | Phỏng vấn, tạo skill chuẩn hóa và sinh agent con qua 8 công cụ quản trị. |
-| ⚡    | **Agent con virtual**            | Một dòng config trong registry, chạy chung engine — tạo tức thì, không cần deploy riêng. |
-| 🔌    | **Connector plug-and-play**      | Dev đăng ký tool provider (dạng MCP); agent khai báo `connectors=[...]` là dùng được ngay. |
-| 🧭    | **Routing 3 tầng**               | Theo tên agent → `@mention` → classify bằng LLM → fallback về Master. |
-| ✅    | **Governance maker-checker**     | Vòng đời `draft → pending_review → active / rejected`; chỉ `active` mới hiển thị cho toàn tổ chức. |
+|       | Tính năng                        | Mô tả                                                                                                              |
+| :---: | -------------------------------- |--------------------------------------------------------------------------------------------------------------------|
+| 🧠    | **Master Agent**                 | Phỏng vấn, tạo skill chuẩn hóa và sinh agent con qua 8 công cụ quản trị.                                           |
+| ⚡    | **Agent con virtual**            | Một dòng config trong registry, chạy chung engine — tạo tức thì, không cần deploy riêng.                           |
+| 🔌    | **Connector plug-and-play**      | Dev đăng ký tool provider (dạng MCP); agent khai báo `connectors=[...]` là dùng được ngay.                         |
+| 🧭    | **Routing 3 tầng**               | Theo tên agent → `@mention` → classify bằng LLM → fallback về Master.                                              |
+| ✅    | **Governance maker-checker**     | Vòng đời `private → pending_review → public / rejected`; chỉ `active` mới hiển thị cho toàn tổ chức.               |
 | 🔁    | **Skill lifecycle & versioning** | Sửa skill `active` ghi vào `pending_changes`; admin duyệt mới tăng version, toàn bộ agent liên quan được cập nhật. |
-| 💾    | **Memory cloud**                 | Lưu lịch sử hội thoại qua module Memory của AgentBase (fallback SQLite local). |
-| 🌐    | **MCP Gateway**                  | Web search đi qua MCP Gateway của AgentBase. |
-| 📎    | **Upload & Knowledge base**      | Đính kèm tài liệu PDF, DOCX, CSV, Excel vào knowledge base. |
-| 🛠️   | **Upia (agent showcase)**        | Phân tích → scaffold → implement → đóng gói file ZIP bàn giao. |
+| 💾    | **Memory cloud**                 | Lưu lịch sử hội thoại qua module Memory của AgentBase (fallback SQLite local).                                     |
+| 🌐    | **MCP Gateway**                  | Web search đi qua MCP Gateway của AgentBase.                                                                       |
+| 📎    | **Upload & Knowledge base**      | Đính kèm tài liệu PDF, DOCX, CSV, Excel vào knowledge base.                                                        |
+| 🛠️   | **Upia (agent showcase)**        | Phân tích → scaffold → implement → đóng gói file ZIP bàn giao.                                                     |
 
 ---
 
@@ -206,8 +208,6 @@ docker push <registry>/agent-hub:latest
 1. PATCH target của gateway `agent-hub-gw` về `{deployed_app_url}/mcp`.
 2. Set `MCP_GATEWAY_ENDPOINT=https://gw-agent-hub-gw-111745.agentbase-gateway.aiplatform.vngcloud.vn` trong env container.
 
-Cấu hình Google OAuth: xem [`DEPLOY_GOOGLE_OAUTH.md`](draft/DEPLOY_GOOGLE_OAUTH.md).
-
 > [!IMPORTANT]
 > Production nên set `DATABASE_URL=postgresql://...` — SQLite trong container là ephemeral nếu không mount volume.
 
@@ -239,22 +239,12 @@ tests/ · e2e/ · evals/
 
 ## 🎬 Demo / Dùng thử
 
-Mở UI, dùng **user switcher** (An / Bình / Admin) để trải nghiệm góc nhìn maker vs. admin.
+Mở https://endpoint-2b7ac966-cf6c-4cbf-8494-acd77ed29f12.agentbase-runtime.aiplatform.vngcloud.vn/web/
 
-1. 🟢 **Khởi tạo** — *An* chat với Master: _"Tôi cần agent thẩm định hợp đồng"_ → Master phỏng vấn, tạo skill + agent con (draft, An dùng ngay).
-2. 🔵 **Trải nghiệm** — An gọi agent theo tên hoặc mô tả _"thẩm định hợp đồng này"_ → router tự định tuyến (`ThamDinhHopDong / high`).
-3. 🟣 **Lan tỏa** — An `submit_for_review` → *Admin* phê duyệt → agent chuyển `active`, toàn tổ chức truy cập được.
-4. 🛠️ **Pro-code** — thử **Upia**: mô tả nhu cầu tích hợp đối tác → Upia sinh source code và bàn giao file ZIP ngay trong chat.
-
----
-
-## 📚 Tài liệu liên quan
-
-- [`CLAUDE.md`](CLAUDE.md) — context kỹ thuật & các quyết định thiết kế đã chốt.
-- [`E2E_TEST_REPORT.md`](draft/E2E_TEST_REPORT.md) — báo cáo kiểm thử end-to-end.
-- [`UIUX_REVIEW.md`](UIUX_REVIEW.md) — review UI/UX.
-- [`evals/`](evals) — harness đánh giá chất lượng agent.
-- [`DEPLOY_GOOGLE_OAUTH.md`](draft/DEPLOY_GOOGLE_OAUTH.md) — hướng dẫn cấu hình OAuth khi deploy public.
+1. 🟢 **Khởi tạo** —  Chat với @Cuccung: _"Tôi cần agent thẩm định hợp đồng"_ → @Cuccung phỏng vấn, tạo skill + agent con (private, dùng được ngay).
+2. 🔵 **Trải nghiệm** — Gọi agent theo tên hoặc mô tả _"thẩm định hợp đồng này"_ → router tự định tuyến (`ThamDinhHopDong / high`).
+3. 🟣 **Lan tỏa** — `submit_for_review` → *Admin* phê duyệt → agent chuyển `public`, toàn tổ chức truy cập được.
+4. 🛠️ **Pro-code** — thử **Upia** - agent được tạo thông qua kiến trúc plug and play: mô tả nhu cầu tích hợp đối tác → Upia sinh source code và bàn giao file ZIP ngay trong chat.
 
 ---
 
