@@ -206,7 +206,7 @@ docker push <registry>/agent-hub:latest
 1. PATCH target của gateway `agent-hub-gw` về `{deployed_app_url}/mcp`.
 2. Set `MCP_GATEWAY_ENDPOINT=https://gw-agent-hub-gw-111745.agentbase-gateway.aiplatform.vngcloud.vn` trong env container.
 
-Cấu hình Google OAuth: xem [`DEPLOY_GOOGLE_OAUTH.md`](DEPLOY_GOOGLE_OAUTH.md).
+Cấu hình Google OAuth: xem [`DEPLOY_GOOGLE_OAUTH.md`](draft/DEPLOY_GOOGLE_OAUTH.md).
 
 > [!IMPORTANT]
 > Production nên set `DATABASE_URL=postgresql://...` — SQLite trong container là ephemeral nếu không mount volume.
@@ -251,10 +251,10 @@ Mở UI, dùng **user switcher** (An / Bình / Admin) để trải nghiệm góc
 ## 📚 Tài liệu liên quan
 
 - [`CLAUDE.md`](CLAUDE.md) — context kỹ thuật & các quyết định thiết kế đã chốt.
-- [`E2E_TEST_REPORT.md`](E2E_TEST_REPORT.md) — báo cáo kiểm thử end-to-end.
+- [`E2E_TEST_REPORT.md`](draft/E2E_TEST_REPORT.md) — báo cáo kiểm thử end-to-end.
 - [`UIUX_REVIEW.md`](UIUX_REVIEW.md) — review UI/UX.
 - [`evals/`](evals) — harness đánh giá chất lượng agent.
-- [`DEPLOY_GOOGLE_OAUTH.md`](DEPLOY_GOOGLE_OAUTH.md) — hướng dẫn cấu hình OAuth khi deploy public.
+- [`DEPLOY_GOOGLE_OAUTH.md`](draft/DEPLOY_GOOGLE_OAUTH.md) — hướng dẫn cấu hình OAuth khi deploy public.
 
 ---
 

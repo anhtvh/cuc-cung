@@ -25,6 +25,7 @@ __pycache__/
 
 # Claude Code project settings (có thể chứa token trong allowed commands)
 .claude/
+CLAUDE.md
 
 # Binary / không cần thiết
 *.docx
@@ -33,3 +34,4 @@ __pycache__/
 /.understand-anything/
 /greennode-agentbase-skills/
 /bug-ui/
+/draft/
