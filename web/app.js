@@ -333,60 +333,26 @@ async function showWelcome() {
     <p class="welcome-or">— hoặc chọn nhanh —</p>
     <div class="welcome-grid">${quickCards.join("")}</div>` : "";
 
+  // Thay 2 path-card (Hỏi bất cứ thứ gì / Tạo trợ lý riêng) bằng carousel tutorial
+  // NHÚNG inline (2 bước). Luôn hiện mỗi chat mới — không cần cờ localStorage.
   welcome.innerHTML = `
     <p class="welcome-greeting">Chào ${hello}! 👋</p>
     <p class="welcome-sub">Cục cưng đây — bạn cần gì hôm nay?</p>
-    <div class="welcome-paths">
-      <button class="welcome-path wp-chat">
-        <span class="welcome-path-icon">${svgIcon("chat")}</span>
-        <div class="welcome-path-title">Hỏi bất cứ thứ gì</div>
-        <div class="welcome-path-desc">Cứ gõ tự nhiên — mình tự tìm đúng người giúp bạn</div>
-      </button>
-      <button class="welcome-path wp-create">
-        <span class="welcome-path-icon">${svgIcon("sparkle")}</span>
-        <div class="welcome-path-title">Tạo trợ lý (agent) riêng</div>
-        <div class="welcome-path-desc">Mô tả việc cần → mình tạo chuyên gia ngay tức thì</div>
-      </button>
-    </div>
+    ${welcomeCarouselHTML()}
     ${orRow}`;
 
   msgs.appendChild(welcome);
 
-  welcome.querySelector(".wp-chat").addEventListener("click", () => {
-    hideWelcome();
-    $("#chat-input").focus();
-  });
+  wireWelcomeCarousel(welcome);
 
-  // #8: panel "Tạo từ mẫu" — chèn ngay dưới ô "Đặt hàng trợ lý riêng", ẩn cho tới khi bấm.
-  let tplPanel = null;
-  if (_templatesCache.length) {
-    tplPanel = document.createElement("div");
-    tplPanel.className = "tpl-panel";
-    const lead = document.createElement("div");
-    lead.className = "tpl-panel-lead";
-    lead.textContent = "Chọn mẫu dựng sẵn để bắt đầu nhanh — hoặc tự mô tả:";
-    tplPanel.appendChild(lead);
-    tplPanel.appendChild(templateGridEl(_templatesCache, { openMaster: true }));
-    const describe = document.createElement("button");
-    describe.className = "tpl-describe-btn";
-    describe.textContent = " Hoặc tự mô tả nhu cầu khác bên dưới khung chat";
-    describe.addEventListener("click", () => {  // = hành vi "Đặt hàng" cũ
-      startChatWith("master", "");
-      $("#chat-input").focus();
-    });
-    tplPanel.appendChild(describe);
-    welcome.querySelector(".welcome-paths").after(tplPanel);
-  }
+  // Lối "Tạo trợ lý riêng" + panel "Tạo từ mẫu" (tplPanel) đã gỡ khỏi màn welcome
+  // (thay bằng carousel). Vẫn tạo agent được qua trang chủ / catalog / chat master
+  // (master handoff vẫn render templateGridEl — xem renderHandoff).
+  // -- code cũ giữ lại để tham chiếu:
+  // welcome.querySelector(".wp-chat")...  // focus input
+  // tplPanel = ... templateGridEl(...) ; welcome.querySelector(".welcome-paths").after(tplPanel);
+  // welcome.querySelector(".wp-create")...  // toggle tplPanel / startChatWith("master")
 
-  welcome.querySelector(".wp-create").addEventListener("click", () => {
-    if (tplPanel) {  // có mẫu → mở panel chọn (guest cũng tạo được, không gate)
-      tplPanel.classList.toggle("open");
-      if (tplPanel.classList.contains("open")) tplPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      return;
-    }
-    startChatWith("master", "");  // mở cuộc mới với master (tạo conversation_id riêng)
-    $("#chat-input").focus();
-  });
   // Chỉ quick-card (.welcome-grid gốc); loại .tpl-grid của panel mẫu — thẻ mẫu đã có
   // handler riêng (pickTemplate) nên không gắn chồng handler quick-card vào nó.
   welcome.querySelectorAll(".welcome-grid:not(.tpl-grid) .wcard").forEach((btn) =>
@@ -396,6 +362,89 @@ async function showWelcome() {
       submitChat();
     })
   );
+}
+
+/* ─── Welcome carousel (tutorial 2 bước, nhúng inline) ───── */
+// Markup tĩnh (2 slide). Tách hàm để showWelcome chèn vào innerHTML.
+function welcomeCarouselHTML() {
+  // Thứ tự: mô tả (title + text) LÊN TRÊN, hình minh hoạ (visual) XUỐNG DƯỚI.
+  // Không nút Trước/Tiếp — auto-play + dots (xem wireWelcomeCarousel).
+  return `
+  <div class="onb-inline">
+    <div class="onb-track">
+      <section class="onb-slide active" data-slide="0">
+        <h3 class="onb-title">Bước 1: Mô tả nhu cầu → có agent ngay</h3>
+        <p class="onb-text">Gõ <code class="onb-code">@Cục Cưng</code> và mô tả nhu cầu (có thể upload SOP, quy trình). Em đề xuất tên + skill; bạn xác nhận là agent sẵn sàng ở trạng thái <strong>private</strong> (riêng tư) để dùng thử ngay.</p>
+        <div class="onb-visual">
+          <div class="onb-stack">
+            <div class="onb-bubble onb-bubble-user"><span class="onb-mention">@Cục Cưng</span> em cần agent thẩm định hợp đồng</div>
+            <svg class="onb-stack-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg>
+            <div class="onb-agent-card">
+              <span class="onb-agent-avatar"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15l-1.9-4.1L5.5 9l4.6-1.4L12 3z"/></svg></span>
+              <span class="onb-agent-name">ThamDinhHopDong</span>
+              <span class="onb-badge-private">private</span>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section class="onb-slide" data-slide="1">
+        <h3 class="onb-title">Bước 2: Dùng & lan tỏa cho tổ chức</h3>
+        <p class="onb-text">Gõ <code class="onb-code">@TênAgent</code> để gọi trực tiếp — agent làm theo đúng quy trình. Khi ưng ý, chia sẻ để cả tổ chức cùng dùng — agent chuyển sang <strong>public</strong>.</p>
+        <div class="onb-visual">
+          <div class="onb-stack">
+            <div class="onb-bubble onb-bubble-user"><span class="onb-mention">@ThamDinhHopDong</span> hãy xem hợp đồng này…</div>
+            <svg class="onb-stack-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg>
+            <div class="onb-share">
+              <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 10.6l6.8-4.2M8.6 13.4l6.8 4.2"/></svg>
+              Chia sẻ cho cả tổ chức
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+    <div class="onb-dots">
+      <button class="onb-dot active" type="button" data-go="0" aria-label="Bước 1"></button>
+      <button class="onb-dot" type="button" data-go="1" aria-label="Bước 2"></button>
+    </div>
+  </div>`;
+}
+
+// Auto-play + dots (không nút). Scope theo root, không global listener.
+// Chỉ 1 welcome tồn tại 1 lúc → giữ timer ở module-level, clear khi wire lại.
+let _welcomeCarTimer = null;
+function wireWelcomeCarousel(root) {
+  const car = root.querySelector(".onb-inline");
+  if (!car) return;
+  const slides = car.querySelectorAll(".onb-slide");
+  const dots = car.querySelectorAll(".onb-dot");
+  const N = slides.length;
+  let idx = 0;
+  let paused = false;
+
+  function render() {
+    slides.forEach((s, i) => s.classList.toggle("active", i === idx));
+    dots.forEach((d, i) => d.classList.toggle("active", i === idx));
+  }
+  function go(i) { idx = ((i % N) + N) % N; render(); }   // wrap: 0→1→0→1 (tự qua lại)
+
+  function tick() {
+    // Self-guard: welcome đã bị gỡ (mở chat mới / gửi tin) → dừng hẳn, tránh rò timer.
+    if (!document.body.contains(car)) { clearInterval(_welcomeCarTimer); _welcomeCarTimer = null; return; }
+    if (!paused) go(idx + 1);
+  }
+  function restart() {
+    if (_welcomeCarTimer) clearInterval(_welcomeCarTimer);
+    _welcomeCarTimer = setInterval(tick, 4000);
+  }
+
+  // Hover thì tạm dừng để đọc kịp; rời chuột chạy tiếp.
+  car.addEventListener("mouseenter", () => { paused = true; });
+  car.addEventListener("mouseleave", () => { paused = false; });
+  // Click dot → nhảy slide + reset đồng hồ (không giật ngay sau khi bấm).
+  dots.forEach((d) => (d.onclick = () => { go(Number(d.dataset.go)); paused = false; restart(); }));
+
+  render();
+  restart();
 }
 
 function hideWelcome() {
@@ -2787,6 +2836,9 @@ window.saveAgentEdit = async function() {
     refreshAgentsCache();
   } catch (e) { errEl.textContent = "Lỗi kết nối"; }
 };
+
+// Onboarding modal (cờ localStorage) đã thay bằng carousel NHÚNG trong welcome
+// chat — xem welcomeCarouselHTML() + wireWelcomeCarousel() ở trên. Bỏ initOnboarding.
 
 /* ─── Init ──────────────────────────────────────────────── */
 // 1. Load auth state trước, sau đó mới render tabs + catalog

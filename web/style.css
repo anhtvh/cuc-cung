@@ -958,6 +958,51 @@ main { flex: 1; overflow: hidden; display: flex; min-height: 0; position: relati
 .modal-overlay[hidden] { display: none; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideUp { from { opacity: 0; transform: translateY(14px) scale(.98); } to { opacity: 1; transform: none; } }
+
+/* ─── Onboarding Carousel (nhúng inline trong welcome chat) ──── */
+/* Modal-only cũ (.onb-overlay/.onb-card/.onb-skip) đã bỏ — carousel giờ là card
+   inline trong màn welcome. */
+.onb-inline { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); width: 100%; max-width: 560px; padding: 24px 24px 18px; box-shadow: var(--shadow); }
+
+.onb-track { min-height: 234px; }
+.onb-slide { display: none; flex-direction: column; align-items: center; text-align: center; }
+.onb-slide.active { display: flex; animation: fadeIn .22s var(--ease); }
+
+/* Hình minh hoạ nằm DƯỚI mô tả → dùng margin-top thay vì margin-bottom. */
+.onb-visual { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 132px; margin-top: 18px; }
+.onb-stack { display: flex; flex-direction: column; align-items: center; gap: 7px; }
+.onb-stack-arrow { width: 18px; height: 18px; color: var(--tx3); flex: none; }
+
+.onb-bubble { max-width: 100%; padding: 11px 15px; border-radius: 15px; font-size: 13.5px; line-height: 1.45; text-align: left; box-shadow: var(--shadow); }
+.onb-bubble-user { background: var(--grad-blue); color: #fff; border-bottom-right-radius: 5px; }
+.onb-mention { font-weight: 700; }
+.onb-bubble-user .onb-mention { color: #fff; }
+
+.onb-agent-card { display: inline-flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: var(--r); background: var(--surface-2); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.onb-agent-avatar { width: 32px; height: 32px; border-radius: 10px; background: var(--blue-soft); color: var(--blue-ink); display: flex; align-items: center; justify-content: center; }
+.onb-agent-avatar .ic { width: 19px; height: 19px; }
+.onb-agent-name { font-weight: 700; font-size: 14px; color: var(--tx); }
+.onb-badge-private { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--tx2); background: var(--surface-3); border: 1px solid var(--border); padding: 3px 9px; border-radius: 999px; }
+
+.onb-share { display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--green-ink); background: var(--green-soft); }
+.onb-share .ic { width: 18px; height: 18px; }
+
+.onb-title { font-size: 17px; font-weight: 800; letter-spacing: -.02em; line-height: 1.3; margin: 0 0 9px; color: var(--tx); }
+.onb-text { font-size: 13.5px; line-height: 1.6; color: var(--tx2); margin: 0; max-width: 460px; }
+.onb-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; background: var(--blue-soft); color: var(--blue-ink); padding: 1px 6px; border-radius: 6px; }
+
+.onb-dots { display: flex; justify-content: center; gap: 8px; margin: 18px 0 2px; }
+.onb-dot { width: 8px; height: 8px; padding: 0; border: none; border-radius: 50%; background: var(--border-2); cursor: pointer; transition: background .15s, transform .15s; }
+.onb-dot:hover { background: var(--tx3); }
+.onb-dot.active { background: var(--blue-ink); transform: scale(1.25); }
+/* .onb-nav (nút Trước/Tiếp) đã bỏ — carousel auto-play + dots. */
+
+@media (max-width: 560px) {
+  .onb-inline { padding: 20px 16px 16px; border-radius: var(--r); }
+  .onb-track { min-height: 224px; }
+  .onb-visual { min-height: 118px; margin-bottom: 16px; }
+  .onb-title { font-size: 16px; }
+}
 .modal, .modal-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-xl); width: 100%; max-width: 540px; max-height: 92vh; overflow-y: auto; animation: slideUp .22s var(--ease); box-shadow: var(--shadow-lg); }
 .modal-header, .modal-hd { display: flex; align-items: center; justify-content: space-between; padding: 22px 24px 0; }
 .modal-hd { padding: 22px 24px; border-bottom: 1px solid var(--border); }

@@ -35,27 +35,53 @@ _ZALOPAY_SKILL = Skill(
 Trang zalopay.vn/khuyen-mai dùng JavaScript nên KHÔNG fetch trực tiếp được — \
 bỏ qua bước fetch URL đó, đi thẳng vào search.
 
+**Ngân sách tool (bắt buộc tuân thủ — tránh cạn lượt rồi bỏ lửng câu trả lời):**
+chỉ được dùng **tối đa 4 lượt gọi tool** cho cả lần trả lời: 1 lượt search \
+(+ tối đa 1 lượt search lại nếu kết quả quá ít) và **tối đa 2-3 lượt fetch**. \
+Hết ngân sách thì DỪNG tìm và trả lời ngay với dữ liệu đang có — không gọi thêm tool.
+
+### 1a. Search (1 lượt, num_results = 8)
 Gọi `web-search__search` với query: `site:zalopay.vn/khuyen-mai`
 - BẮT BUỘC dùng `site:zalopay.vn` — chỉ lấy kết quả từ domain zalopay.vn, bỏ qua mọi trang khác
 - KHÔNG thêm năm (2025/2026) vào query — năm trong query dễ lọc nhầm KM cũ
 - KHÔNG dùng thông tin từ bộ nhớ hay cuộc trò chuyện trước — KM thay đổi hằng ngày
-- Nếu kết quả ít: thử query `site:zalopay.vn ưu đãi` hoặc `site:zalopay.vn giảm giá`
+- Nếu kết quả ít: thử MỘT query khác `site:zalopay.vn ưu đãi` hoặc `site:zalopay.vn giảm giá`
 
-Với mỗi URL tìm được: kiểm tra URL phải bắt đầu bằng `https://zalopay.vn` — \
-nếu không phải thì bỏ qua, KHÔNG fetch. Với URL hợp lệ: gọi `web-search__fetch` \
-để lấy nội dung đầy đủ và **lưu lại URL zalopay.vn đó** để đính kèm vào output.
+### 1b. Xếp hạng sơ bộ TỪ SNIPPET — KHÔNG fetch tất cả
+Snippet trong kết quả search đã có tên KM + giá trị (% / số tiền) → đủ để lọc và \
+xếp hạng sơ bộ ngay, KHÔNG cần fetch từng trang. Lọc trước:
+- Chỉ giữ URL bắt đầu bằng `https://zalopay.vn` — URL khác (didongviet, bachhoaxanh...) bỏ luôn, KHÔNG fetch.
+- Bỏ URL không phải bài KM cụ thể (trang chủ/danh mục chung).
+
+### 1c. Fetch CÓ CHỌN LỌC (tối đa 2-3 URL top)
+Chọn **2-3 URL zalopay.vn có snippet hứa hẹn nhất** (deal ngon nhất / sắp hết hạn) → \
+gọi `web-search__fetch` để xác minh chi tiết điều kiện và **lưu lại đúng URL đó** đính kèm output. \
+Các KM còn lại (đã có đủ tên + giá trị + link từ snippet) đưa thẳng vào bảng, không cần fetch. \
+Nếu snippet đã đủ thông tin cho cả 2-3 KM hàng đầu thì có thể bỏ qua fetch hoàn toàn.
 
 ## Bước 2 — Trích xuất thông tin mỗi KM
-Với từng khuyến mãi tìm được, ghi nhận:
+Với từng khuyến mãi (lấy từ snippet, bổ sung chi tiết từ trang đã fetch nếu có), ghi nhận:
 - **Tên KM**: mô tả ngắn gọn
 - **Giá trị**: % giảm hoặc số tiền giảm tối đa (VD: giảm 50%, tối đa 30.000đ)
 - **Điều kiện**: hoá đơn tối thiểu, đối tác/merchant, phương thức thanh toán, số lần dùng
-- **Hạn sử dụng**: ngày kết thúc cụ thể hoặc "hôm nay", "tuần này"
+- **Hạn sử dụng**: ngày kết thúc cụ thể của KM. CẢNH BÁO: ngày dạng "Tháng M/YYYY" \
+hay ngày đăng trên trang/snippet thường là NGÀY ĐĂNG BÀI, KHÔNG phải hạn KM — \
+đừng suy ra hạn dùng từ đó. Không thấy hạn kết thúc rõ ràng → ghi "không rõ hạn".
 - **Link**: URL bài viết/trang KM cụ thể lấy từ kết quả search — BẮT BUỘC có
 
+## Bước 2.5 — Lọc KM hết hạn & link chết (BẮT BUỘC, làm trước khi xếp hạng)
+Đầu system prompt có "hôm nay là {ngày}" — dùng mốc đó để lọc:
+- **Hết hạn:** nếu hạn dùng xác định được và đã TRƯỚC hôm nay → LOẠI khỏi bảng, \
+KHÔNG đưa vào "Tốt nhất hôm nay". Không bao giờ liệt kê KM có hạn đã qua.
+- **Link chết:** với KM đã fetch mà trang trả lỗi (HTTP 4xx/timeout) hoặc nội dung \
+không còn thông tin KM → coi như link chết, LOẠI KM đó (đừng show link bấm vào không có deal).
+- **Không rõ hạn:** giữ lại nhưng ghi "không rõ hạn" và KHÔNG xếp vào hạng "sắp hết hạn"; \
+nhắc user kiểm tra lại trên app Zalopay.
+- Sau khi lọc mà không còn KM nào hợp lệ → nói thật "chưa tìm thấy KM còn hiệu lực hôm nay", KHÔNG bịa.
+
 ## Bước 3 — Chấm điểm & xếp hạng
-Ưu tiên theo thứ tự:
-1. KM **sắp hết hạn trong ngày** (urgency cao — user cần dùng ngay)
+Chỉ xếp hạng các KM ĐÃ QUA lọc ở Bước 2.5 (còn hiệu lực). Ưu tiên theo thứ tự:
+1. KM **sắp hết hạn nhưng VẪN còn hiệu lực** (hạn ≥ hôm nay, urgency cao — user cần dùng ngay)
 2. **Giá trị tiết kiệm tuyệt đối cao nhất** (số tiền giảm được, không phải % thuần)
 3. **Điều kiện dễ đáp ứng** (hoá đơn tối thiểu thấp, không giới hạn merchant)
 4. **Phạm vi rộng** (nhiều merchant, nhiều danh mục, không giới hạn số lần)
@@ -115,7 +141,8 @@ tư vấn tài chính/đầu tư
 theo nhu cầu. Ngắn gọn, dễ đọc trên mobile. Luôn viết đúng **Zalopay** (không phải zalopay).
 
 **Tuyệt đối không:** bịa khuyến mãi khi không tìm được nguồn; để trống cột link trong \
-bảng; dùng thông tin KM từ bộ nhớ cũ thay vì tìm kiếm mới mỗi lần.\
+bảng; dùng thông tin KM từ bộ nhớ cũ thay vì tìm kiếm mới mỗi lần; **liệt kê KM đã hết hạn** \
+(so hạn dùng với "hôm nay" ở đầu prompt) hoặc KM có link chết (trang fetch ra lỗi/không còn deal).\
 """,
     connectors=["web-search"],
     domain="marketing",
@@ -493,20 +520,68 @@ _MASTER_SLUG = "cuc-cung"
 _MASTER_DESCRIPTION = "Cục cưng — tạo agent mới và điều phối khi chưa có agent phù hợp."
 
 
+def _sync_skill(skills, current, desired) -> None:
+    """Đồng bộ nội dung skill seed từ code → DB (code là nguồn sự thật, giống master prompt).
+
+    Chỉ cập nhật các field nội dung; GIỮ NGUYÊN governance state (status, created_by,
+    reviewed_by, pending_changes, id, created_at) — không reset duyệt, không tạo lại.
+    content đổi → version+1 (UI/chat hiển thị `v{n}`, theo dõi được skill đã đổi).
+    """
+    changed = False
+    if current.description != desired.description:
+        current.description = desired.description
+        changed = True
+    if current.domain != desired.domain:
+        current.domain = desired.domain
+        changed = True
+    if current.content != desired.content:
+        current.content = desired.content
+        current.version += 1
+        changed = True
+    if changed:
+        skills.update(current)
+        log.info("seed: đồng bộ skill %s từ code (v%d)", current.name, current.version)
+
+
+def _sync_agent(agents, current, desired) -> None:
+    """Đồng bộ nội dung agent seed từ code → DB, giữ nguyên governance state."""
+    changed = False
+    for field in ("tagline", "description", "system_prompt", "domain"):
+        if getattr(current, field) != getattr(desired, field):
+            setattr(current, field, getattr(desired, field))
+            changed = True
+    if current.connectors != desired.connectors:
+        current.connectors = desired.connectors
+        changed = True
+    if changed:
+        agents.update(current)
+        log.info("seed: đồng bộ agent '%s' từ code", current.name)
+
+
 def _seed_one(agents, skills, governance, skill_obj, agent_obj) -> None:
-    """Tạo 1 cặp skill+agent qua governance flow: private → pending → public. Idempotent."""
-    if skills.get(skill_obj.name) is None:
+    """Tạo (nếu chưa có) hoặc đồng bộ (nếu đã có) 1 cặp skill+agent. Idempotent.
+
+    Lần đầu: tạo qua governance flow private → pending → public.
+    Lần sau: code đổi nội dung → sync vào DB (Cách A) nhưng giữ nguyên trạng thái duyệt.
+    """
+    existing_skill = skills.get(skill_obj.name)
+    if existing_skill is None:
         skills.create(skill_obj.model_copy(deep=True))
         governance.submit_for_review("skill", skill_obj.name, "admin")
         governance.approve("skill", skill_obj.name, "admin")
         log.info("seed: tạo skill %s (public)", skill_obj.name)
+    else:
+        _sync_skill(skills, existing_skill, skill_obj)
 
-    if agents.get(agent_obj.name) is None:
+    existing_agent = agents.get(agent_obj.name)
+    if existing_agent is None:
         agents.create(agent_obj.model_copy(deep=True))
         agents.attach_skill(agent_obj.name, skill_obj.name)
         governance.submit_for_review("agent", agent_obj.name, "admin")
         governance.approve("agent", agent_obj.name, "admin")
         log.info("seed: tạo agent '%s' (public)", agent_obj.name)
+    else:
+        _sync_agent(agents, existing_agent, agent_obj)
 
 
 def _seed_zalopay_agents(agents, skills, governance) -> None:
