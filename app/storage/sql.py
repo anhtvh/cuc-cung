@@ -28,6 +28,8 @@ class AgentRow(Base):
     status: Mapped[str] = mapped_column(Text, default="private")
     # I-05: per-agent escalate toggle (default True → không đổi hành vi hiện tại)
     escalate_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # per-agent web-search toggle (default True). False = closed-domain (FAQ/Deals/Docs) → không cấp web-search.
+    web_search_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     pending_changes: Mapped[str | None] = mapped_column(Text)  # JSON (Flow 4)
     visibility: Mapped[str] = mapped_column(Text, default="company")
     identity_ref: Mapped[str | None] = mapped_column(Text)  # hook roadmap #2
@@ -161,6 +163,7 @@ def _agent_from_row(r: AgentRow) -> Agent:
         domain=r.domain,
         status=ItemStatus(r.status),
         escalate_enabled=r.escalate_enabled if r.escalate_enabled is not None else True,
+        web_search_enabled=r.web_search_enabled if r.web_search_enabled is not None else True,
         pending_changes=json.loads(r.pending_changes) if r.pending_changes else None,
         visibility=Visibility(r.visibility),
         identity_ref=r.identity_ref,
@@ -184,6 +187,7 @@ def _agent_to_row(a: Agent, r: AgentRow) -> AgentRow:
     r.domain = a.domain
     r.status = a.status.value
     r.escalate_enabled = a.escalate_enabled
+    r.web_search_enabled = a.web_search_enabled
     r.pending_changes = json.dumps(a.pending_changes, ensure_ascii=False) if a.pending_changes else None
     r.visibility = a.visibility.value
     r.identity_ref = a.identity_ref

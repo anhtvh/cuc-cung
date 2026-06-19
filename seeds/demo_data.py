@@ -121,6 +121,7 @@ dùng thông tin KM từ bộ nhớ cũ thay vì gọi `list_deals` mới mỗi 
     # Trang /khuyen-mai là SPA rỗng nên cách đó bấp bênh; chuyển sang gọi thẳng API list KM
     # (zalopay-deals) — realtime, đã lọc còn hạn, link dựng sẵn.
     connectors=["zalopay-deals"],
+    web_search_enabled=False,  # closed-domain: chỉ KM từ API Zalopay, không độn deal từ web
     domain="marketing",
     created_by="admin",
 )
@@ -139,6 +140,20 @@ _ZLP_FAQ_SKILL = Skill(
 Trả lời câu hỏi nghiệp vụ zalopay bằng cách gọi THẲNG FAQ API chính thức (server `zalopay-faq`)
 — dữ liệu cấu trúc, kèm SẴN nội dung câu trả lời. KHÔNG search/fetch HTML (trang hoi-dap render
 động, HTML thô rỗng). Điều hướng theo TÊN: danh mục → thư mục → bài viết.
+
+## Bước 0 — Kiểm tra phạm vi (BẮT BUỘC, làm TRƯỚC khi gọi tool)
+Em CHỈ hỗ trợ **Zalopay**. Nếu câu hỏi nói về **sản phẩm/dịch vụ KHÔNG phải Zalopay** — ví/app/ngân
+hàng/sàn khác như **MoMo, ShopeePay, VNPay, ZaloPay≠, Viettel Money, ngân hàng X, Shopee…** — thì:
+- **DỪNG, KHÔNG tra cứu FAQ, KHÔNG trả lời nội dung.** FAQ Zalopay không có thông tin bên thứ ba.
+- **KHÔNG đưa hotline/website/hướng dẫn của bên đó** (vd `1900...` của MoMo, `help.momo.vn`) — đó là
+  bịa/đoán, không phải nguồn Zalopay.
+- Trả lời ngắn gọn: em chỉ hỗ trợ Zalopay, vấn đề về {bên kia} anh/chị vui lòng liên hệ trực tiếp
+  nhà cung cấp đó; rồi hỏi anh/chị có cần hỗ trợ gì về **Zalopay** không.
+- Lưu ý "khoá ví / chuyển tiền / thanh toán" CHỈ xử lý khi là **của Zalopay**. "Khoá ví MoMo",
+  "chuyển tiền sang MoMo"… → ngoài phạm vi, áp dụng quy tắc trên.
+- TUYỆT ĐỐI KHÔNG suy đoán tính năng kèm "(nếu có)" / "(nếu … hỗ trợ)" — không chắc thì KHÔNG nói.
+
+Chỉ khi câu hỏi đúng về Zalopay mới sang Bước 1.
 
 ## Bước 1 — Chọn danh mục
 Gọi `zalopay-faq__list_categories` → danh sách `{id, name}`. Chọn danh mục khớp ý câu hỏi nhất, lấy `id`.
@@ -220,21 +235,25 @@ câu hỏi của anh/chị — thông tin luôn chính xác theo nguồn thật,
 **Phạm vi:**
 - Làm: giải đáp mọi thắc mắc về tài khoản zalopay, nạp/rút tiền, chuyển tiền, \
 thanh toán dịch vụ, bảo mật, liên kết ngân hàng, khuyến mãi zalopay
-- Không làm: tư vấn tài chính cá nhân, so sánh ví điện tử khác, hỗ trợ kỹ thuật \
-ngoài phạm vi zalopay
-- Ngoài phạm vi: escalate để tìm người phù hợp, không tự trả lời lan man
+- Không làm: tư vấn tài chính cá nhân, hỗ trợ kỹ thuật ngoài zalopay, và **bất kỳ câu hỏi về \
+sản phẩm KHÔNG phải Zalopay** (MoMo, ShopeePay, VNPay, Viettel Money, ngân hàng/sàn khác) — \
+kể cả "khoá ví/chuyển tiền/thanh toán" của bên đó
+- Ngoài phạm vi: nói rõ em chỉ hỗ trợ Zalopay, mời anh/chị liên hệ trực tiếp nhà cung cấp đó \
+(KHÔNG tự đưa hotline/website của họ), rồi hỏi có cần hỗ trợ gì về Zalopay không
 
 **Format output:** Theo đúng quy trình trong skill — câu trả lời đầy đủ từ nguồn \
 chính thức, kèm link gốc và câu hỏi liên quan. Rõ ràng từng bước, dễ làm theo.
 
 **Tuyệt đối không:** bịa câu trả lời khi tool FAQ lỗi / không có bài khớp; trả lời từ trí nhớ \
-thay vì từ nội dung FAQ API đã đọc; cam kết thông tin mà không có trong FAQ chính thức; \
-trả lời câu hỏi ngoài Zalopay; bỏ qua câu hỏi mà không tra cứu FAQ.\
+thay vì từ nội dung FAQ API đã đọc; **đưa hotline/website/hướng dẫn của ví/app khác** (vd MoMo); \
+**suy đoán tính năng kèm "(nếu có)"/"(nếu … hỗ trợ)"** — không chắc thì không nói; cam kết thông \
+tin không có trong FAQ; trả lời câu hỏi ngoài Zalopay; bỏ qua câu hỏi mà không tra cứu FAQ.\
 """,
     # Cũ: connectors=["web-search"] — search site:zalopay.vn/hoi-dap rồi fetch HTML. Trang FAQ là
     # Next.js render động nên fetch HTML kém ổn định; chuyển sang gọi thẳng FAQ JSON API (zalopay-faq)
     # cho dữ liệu cấu trúc, chính xác hơn.
     connectors=["zalopay-faq"],
+    web_search_enabled=False,  # closed-domain: chỉ trả lời từ FAQ Zalopay, không search web (chống bịa info bên thứ ba)
     domain="support",
     created_by="admin",
 )
@@ -552,7 +571,7 @@ def _sync_skill(skills, current, desired) -> None:
 def _sync_agent(agents, current, desired) -> None:
     """Đồng bộ nội dung agent seed từ code → DB, giữ nguyên governance state."""
     changed = False
-    for field in ("tagline", "description", "system_prompt", "domain"):
+    for field in ("tagline", "description", "system_prompt", "domain", "escalate_enabled", "web_search_enabled"):
         if getattr(current, field) != getattr(desired, field):
             setattr(current, field, getattr(desired, field))
             changed = True
@@ -671,6 +690,7 @@ LUÔN kèm link nguồn trang đã đọc để anh/chị mở xem chi tiết.
 trí nhớ thay vì từ tài liệu đã đọc; bỏ qua câu hỏi mà không tra cứu docs.\
 """,
     connectors=["zalopay-docs"],
+    web_search_enabled=False,  # closed-domain: chỉ trả lời từ docs.zalopay.vn, không search web
     domain="engineering",
     created_by="admin",
 )

@@ -53,6 +53,9 @@ class Agent(BaseModel):
     status: ItemStatus = ItemStatus.private
     # I-05: agent chuyên môn chặt có thể tắt để không escalate quá sớm khi hơi lệch domain
     escalate_enabled: bool = True
+    # Agent closed-domain (chỉ trả lời từ nguồn riêng, vd FAQ/Deals/Docs Zalopay) tắt = False
+    # → engine KHÔNG cấp web-search always-on, buộc bám nguồn chính thức, không search ngoài (chống bịa).
+    web_search_enabled: bool = True
     pending_changes: dict[str, Any] | None = None  # sửa đổi chờ duyệt khi đang public (Flow 4)
     visibility: Visibility = Visibility.company
     identity_ref: str | None = None  # hook roadmap #2 — KHÔNG lưu key trong DB

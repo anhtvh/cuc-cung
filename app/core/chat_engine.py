@@ -208,7 +208,8 @@ Mục tiêu: trả lời user trong khoảng **1 phút**. KHÔNG cố tra cứu/
 - Nếu hệ thống nhắc *"đã chạm giới hạn thời gian (SLA)"* → dừng tra cứu, tổng hợp & trả lời ngay.
 """
 
-def _decision_tree(escalate_enabled: bool, knowledge_enabled: bool, file_export_enabled: bool = False) -> str:
+def _decision_tree(escalate_enabled: bool, knowledge_enabled: bool, file_export_enabled: bool = False,
+                   web_search_enabled: bool = True) -> str:
     """P2-3: MỘT cây quyết định gốc cho agent con — thay vì nhiều mục 'KIỂM TRA ĐẦU TIÊN' /
     'GỌI TRƯỚC' rải rác, mâu thuẫn (model nhỏ minimax khó tuân thủ → hành vi dao động).
     Chỉ liệt kê bước có tool tương ứng. Kèm quy tắc HỘI TỤ — đánh trúng lỗi 'kể lể mà không
@@ -220,8 +221,9 @@ def _decision_tree(escalate_enabled: bool, knowledge_enabled: bool, file_export_
     if knowledge_enabled:
         steps.append("Hỏi về quy trình/chính sách/nghiệp vụ nội bộ? → `knowledge_search` trước, "
                      "trả lời theo tài liệu + trích nguồn.")
-    steps.append("Cần dữ liệu thực tế/mới (tin tức, số liệu, khuyến mãi hôm nay...)? → web-search: "
-                 "search → chọn 1–2 URL uy tín → fetch → trả lời theo nội dung đọc được.")
+    if web_search_enabled:
+        steps.append("Cần dữ liệu thực tế/mới (tin tức, số liệu, khuyến mãi hôm nay...)? → web-search: "
+                     "search → chọn 1–2 URL uy tín → fetch → trả lời theo nội dung đọc được.")
     if file_export_enabled:
         steps.append("User muốn LƯU/TẢI kết quả thành file? → gọi `file-export` "
                      "(mặc định Excel nếu user không nói rõ định dạng).")
@@ -486,7 +488,8 @@ class ChatEngine:
             parts.append(_NO_FABRICATION_PROMPT)
             # P2-3: cây quyết định gốc đặt ngay đầu — sắp thứ tự ưu tiên cho các mục chi tiết
             # bên dưới (escalate/knowledge/web), tránh nhiều "FIRST" mâu thuẫn. Kèm quy tắc hội tụ.
-            parts.append(_decision_tree(agent.escalate_enabled, knowledge_enabled, file_export_enabled))
+            parts.append(_decision_tree(agent.escalate_enabled, knowledge_enabled, file_export_enabled,
+                                        agent.web_search_enabled))
             # Chỉ hướng dẫn escalate khi tool escalate thật sự được cấp (stream gate theo
             # escalate_enabled) — tránh prompt bảo gọi tool không tồn tại.
             if agent.escalate_enabled:
@@ -494,7 +497,10 @@ class ChatEngine:
             # request_update luôn được cấp cho agent con → luôn hướng dẫn (hướng A: cập nhật
             # knowledge của chính agent phải đi qua master, không tự "vâng dạ cho có").
             parts.append(_REQUEST_UPDATE_PROMPT_SUFFIX)
-            parts.append(_WEB_SEARCH_PROMPT_SUFFIX)
+            # Chỉ hướng dẫn web-search khi agent thật sự được cấp (closed-domain agent tắt cờ này
+            # → không nhét web-search vào tool list lẫn prompt, tránh đi tìm ngoài nguồn chính thức).
+            if agent.web_search_enabled:
+                parts.append(_WEB_SEARCH_PROMPT_SUFFIX)
 
         # RAG: agent có tài liệu → hướng dẫn dùng knowledge_search + trích nguồn (mọi agent).
         if knowledge_enabled:
@@ -554,7 +560,10 @@ class ChatEngine:
         # Tools = connector của agent map từ catalog — không có thì gọi chay.
         # dict.fromkeys giữ thứ tự, loại duplicate (vd agent.connectors có "web-search"
         # trùng với ALWAYS_ON_SERVERS → Anthropic API từ chối duplicate tool name).
-        connectors = list(dict.fromkeys([*ALWAYS_ON_SERVERS, *agent.connectors]))
+        # web_search_enabled=False (agent closed-domain: CS/Deal/Docs) → KHÔNG cấp web-search,
+        # buộc agent chỉ trả lời từ nguồn chính thức của nó, không đi search ngoài → chống bịa.
+        always_on = [s for s in ALWAYS_ON_SERVERS if s != "web-search" or agent.web_search_enabled]
+        connectors = list(dict.fromkeys([*always_on, *agent.connectors]))
         tools = self._catalog.tools_for(connectors)
         # Flow 5: tool experimental-gated (vd workspace của Upia) chỉ lộ khi expose — ngoài ra gỡ
         # để không đổi hành vi flow gốc (parity cả runtime stream() lẫn sandbox run_once()).
