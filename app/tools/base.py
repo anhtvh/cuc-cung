@@ -10,7 +10,7 @@ hiển thị dạng chấm ở catalog/UI.
 
 from typing import Any, Protocol
 
-from app.llm.base import ToolDef
+from app.llm.base import ToolDef, ToolResult
 
 WIRE_SEP = "__"
 
@@ -32,4 +32,6 @@ class ToolProvider(Protocol):
         """ToolDef.name là tên TRẦN (chưa prefix server)."""
         ...
 
-    def call(self, tool_name: str, args: dict[str, Any]) -> str: ...
+    # Trả str (kết quả thường) HOẶC ToolResult khi cần tự set is_error (lỗi thật sự, vd
+    # search/fetch thất bại) để model phân biệt "thất bại" với "ra rỗng" — chống bịa.
+    def call(self, tool_name: str, args: dict[str, Any]) -> "str | ToolResult": ...

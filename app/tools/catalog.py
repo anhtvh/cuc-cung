@@ -97,7 +97,11 @@ class ToolCatalog:
             return ToolResult(content=f"tool không tồn tại: {wire_name}", is_error=True)
         try:
             future = self._executor.submit(provider.call, tool, args)
-            return ToolResult(content=future.result(timeout=self._timeout))
+            raw = future.result(timeout=self._timeout)
+            # Provider có thể tự trả ToolResult để chủ động set is_error (vd web-search:
+            # search/fetch thất bại) — tránh việc lỗi bị nuốt thành kết quả "thành công" khiến
+            # model tưởng có dữ liệu rồi bịa. Trả str (cũ) thì vẫn wrap như trước (is_error=False).
+            return raw if isinstance(raw, ToolResult) else ToolResult(content=raw)
         except concurrent.futures.TimeoutError:
             log.error("tool %s timeout sau %ds", wire_name, self._timeout)
             return ToolResult(content=f"tool {to_display(wire_name)} timeout", is_error=True)

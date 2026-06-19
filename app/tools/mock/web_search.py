@@ -13,25 +13,32 @@ import logging
 import re
 from typing import Any
 
-from app.llm.base import ToolDef
+from app.llm.base import ToolDef, ToolResult
 # SSRF guard chuyển sang app.tools.net.safe_get — kiểm IP nội mạng ở MỌI hop redirect,
 # không chỉ URL gốc (guard cũ _ssrf_check + follow_redirects=True bị bypass qua 302).
 from app.tools.net import SsrfBlocked, safe_get
 
 log = logging.getLogger(__name__)
 
-_FALLBACK_RESULTS = [
-    {
-        "title": "Không tìm được kết quả",
-        "url": "",
-        "snippet": "Tìm kiếm web thất bại. Thử lại sau hoặc kiểm tra kết nối mạng.",
-    }
-]
+# Cũ: _FALLBACK_RESULTS trả về như một "kết quả" bình thường (is_error=False) khi DDG rỗng/lỗi
+# → model nuốt nhầm thành "đã search xong" rồi trả lời từ trí nhớ training (bịa). Bỏ; nay lỗi
+# search trả ToolResult(is_error=True) để model biết RÕ là thất bại (xem _search).
+# _FALLBACK_RESULTS = [
+#     {"title": "Không tìm được kết quả", "url": "",
+#      "snippet": "Tìm kiếm web thất bại. Thử lại sau hoặc kiểm tra kết nối mạng."}
+# ]
 
 _MAX_FETCH_CHARS = 12_000
 
 
+class SearchFailed(Exception):
+    """DDG search thất bại do hạ tầng (mạng/429/captcha) — KHÁC với 'ra 0 kết quả'."""
+
+
 def _ddg_search(query: str, n: int) -> list[dict]:
+    # Cũ: except → return [] → _search không phân biệt "lỗi hạ tầng" với "không có kết quả",
+    # cả hai đều thành fallback "thành công" → model bịa. Nay raise SearchFailed khi lỗi thật
+    # để _search đánh dấu is_error; [] chỉ còn nghĩa "thật sự không có kết quả nào".
     try:
         from ddgs import DDGS
         with DDGS() as ddg:
@@ -46,7 +53,7 @@ def _ddg_search(query: str, n: int) -> list[dict]:
         ]
     except Exception as e:
         log.warning("DDG search lỗi: %s", e)
-        return []
+        raise SearchFailed(str(e)) from e
 
 
 def _fetch_page(url: str) -> dict:
@@ -129,29 +136,59 @@ class WebSearchProvider:
             ),
         ]
 
-    def call(self, tool_name: str, args: dict[str, Any]) -> str:
+    # Trả str khi thành công, ToolResult(is_error=True) khi thất bại — để model phân biệt
+    # "có dữ liệu" với "tra cứu hỏng/không có" và KHÔNG bịa khi không có dữ liệu thật.
+    def call(self, tool_name: str, args: dict[str, Any]) -> "str | ToolResult":
         if tool_name == "search":
             return self._search(args)
         if tool_name == "fetch":
             return self._fetch(args)
         raise ValueError(f"tool không tồn tại: {tool_name}")
 
-    def _search(self, args: dict) -> str:
+    def _search(self, args: dict) -> "str | ToolResult":
         query = str(args.get("query", "")).strip()
         n = min(int(args.get("num_results", 5)), 8)
         if not query:
-            return json.dumps({"error": "query trống"}, ensure_ascii=False)
-        results = _ddg_search(query, n)
+            return ToolResult(content="Lỗi: query tìm kiếm trống.", is_error=True)
+        # Cũ: lỗi hạ tầng và "ra rỗng" đều bị nhồi _FALLBACK_RESULTS rồi trả thành công → model
+        # tưởng đã search xong và tự bịa. Nay tách 2 nhánh, cả hai đều is_error=True kèm chỉ thị
+        # rõ "KHÔNG có dữ liệu, đừng bịa".
+        try:
+            results = _ddg_search(query, n)
+        except SearchFailed as e:
+            log.warning("DDG search thất bại query=%r: %s", query, e)
+            return ToolResult(
+                content=(
+                    f"Tìm kiếm web THẤT BẠI cho '{query}' ({e}). Không lấy được kết quả nào. "
+                    "KHÔNG bịa thông tin — hãy nói thẳng với user là chưa tra cứu được."
+                ),
+                is_error=True,
+            )
         if not results:
             log.warning("DDG trả rỗng cho query=%r", query)
-            results = _FALLBACK_RESULTS
+            return ToolResult(
+                content=(
+                    f"Không tìm thấy kết quả nào cho '{query}'. KHÔNG có dữ liệu để trả lời — "
+                    "đừng bịa; nói thẳng là không tìm được thông tin hoặc thử từ khoá khác."
+                ),
+                is_error=True,
+            )
         return json.dumps({"query": query, "results": results}, ensure_ascii=False)
 
-    def _fetch(self, args: dict) -> str:
+    def _fetch(self, args: dict) -> "str | ToolResult":
         url = str(args.get("url", "")).strip()
         if not url:
-            return json.dumps({"error": "url trống"}, ensure_ascii=False)
+            return ToolResult(content="Lỗi: url trống.", is_error=True)
         result = _fetch_page(url)
         if "error" in result:
+            # Cũ: trả {"url", "error"} thành công (is_error=False) → model bỏ qua lỗi, lấy nội dung
+            # trang từ trí nhớ. Nay is_error=True để model biết fetch HỎNG → thử URL khác/không bịa.
             log.warning("web-search fetch lỗi url=%r: %s", url, result["error"])
+            return ToolResult(
+                content=(
+                    f"Không đọc được nội dung '{url}': {result['error']}. "
+                    "Thử URL khác trong kết quả search; KHÔNG bịa nội dung trang."
+                ),
+                is_error=True,
+            )
         return json.dumps({"url": url, **result}, ensure_ascii=False)
