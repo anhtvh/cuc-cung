@@ -55,7 +55,7 @@ app/
   core/
     models.py            — Pydantic: Agent, Skill, ItemStatus, Visibility, RouteDecision
     router.py            — Flow 1: explicit / @mention / classify → agent
-    chat_engine.py       — Flow 3: persona + skills + history + tool loop (max 5 vòng)
+    chat_engine.py       — Flow 3: persona + skills + history + tool loop (max 10 vòng; builder 20). Cắt thực tế thường là SLA 55s, không phải số vòng.
     governance.py        — Flow 2b: state machine draft→pending→active/rejected, validate, dedup
     prompts/router_system.md
   builder/
