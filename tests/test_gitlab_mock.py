@@ -116,7 +116,7 @@ class TestMrReviewerSeed:
             agents=agents,
             skills=skills,
             admin_ids={"admin"},
-            catalog_servers=["gitlab", "system", "web-search", "partner-integration", "zalopay-faq", "zalopay-deals"],
+            catalog_servers=["gitlab", "system", "web-search", "partner-integration", "zalopay-faq", "zalopay-deals", "zalopay-docs"],
             min_prompt_length=200,
         )
         ensure_seed(agents, skills, gov)

@@ -44,6 +44,7 @@ from app.tools.mock.gitlab import GitlabProvider
 from app.tools.mock.web_search import WebSearchProvider
 from app.tools.zalopay_faq import ZalopayFaqProvider
 from app.tools.zalopay_deals import ZalopayDealsProvider
+from app.tools.zalopay_docs import ZalopayDocsProvider
 from seeds.demo_data import ensure_seed
 
 
@@ -193,6 +194,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         GitlabProvider(),  # mock GitLab cho agent MrReviewer (Flow 5)
         ZalopayFaqProvider(),  # gọi thẳng FAQ JSON API zalopay (Em Bé CS) — chính xác hơn fetch HTML
         ZalopayDealsProvider(),  # gọi thẳng API list khuyến mãi zalopay (Em Bé Săn Deal) — realtime, lọc còn hạn
+        ZalopayDocsProvider(),  # tra cứu tài liệu docs.zalopay.vn (Trợ lý Zalopay MiniApp SDK) — Docusaurus SSG
         web_search_provider,
     ]
     catalog = ToolCatalog(providers, tool_timeout_seconds=settings.tool_timeout_seconds)
