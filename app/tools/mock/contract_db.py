@@ -6,7 +6,7 @@ Minh bạch: đây là mock; production cắm server thật qua AgentBase MCP Ga
 import json
 from typing import Any
 
-from app.llm.base import ToolDef
+from app.llm.base import ToolDef, ToolResult
 
 _SAMPLE_CONTRACTS = [
     {
@@ -68,7 +68,7 @@ class ContractDbProvider:
             ),
         ]
 
-    def call(self, tool_name: str, args: dict[str, Any]) -> str:
+    def call(self, tool_name: str, args: dict[str, Any]) -> "str | ToolResult":
         if tool_name == "search_contracts":
             q = str(args.get("query", "")).lower()
             hits = [
@@ -76,7 +76,17 @@ class ContractDbProvider:
                 for c in _SAMPLE_CONTRACTS
                 if not q or q in json.dumps(c, ensure_ascii=False).lower()
             ]
-            return json.dumps({"results": hits or _SAMPLE_CONTRACTS[:1]}, ensure_ascii=False)
+            # Cũ: `hits or _SAMPLE_CONTRACTS[:1]` — không khớp gì vẫn trả HD-2026-001 như thể khớp
+            # → agent nói về hợp đồng không liên quan như có thật (bịa). Nay rỗng → is_error rõ ràng.
+            if not hits:
+                return ToolResult(
+                    content=(
+                        f"Không tìm thấy hợp đồng nào khớp '{args.get('query', '')}'. "
+                        "KHÔNG có hợp đồng phù hợp trong kho — đừng bịa; báo user là không tìm thấy."
+                    ),
+                    is_error=True,
+                )
+            return json.dumps({"results": hits}, ensure_ascii=False)
         if tool_name == "get_contract":
             cid = str(args.get("id", "")).upper()
             for c in _SAMPLE_CONTRACTS:

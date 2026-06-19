@@ -3,7 +3,7 @@
 import json
 from typing import Any
 
-from app.llm.base import ToolDef
+from app.llm.base import ToolDef, ToolResult
 
 _POLICIES = [
     {
@@ -41,9 +41,19 @@ class CompanyDocsProvider:
             )
         ]
 
-    def call(self, tool_name: str, args: dict[str, Any]) -> str:
+    def call(self, tool_name: str, args: dict[str, Any]) -> "str | ToolResult":
         if tool_name == "search_policy":
             q = str(args.get("query", "")).lower()
             hits = [p for p in _POLICIES if not q or q in json.dumps(p, ensure_ascii=False).lower()]
-            return json.dumps({"results": hits or _POLICIES}, ensure_ascii=False)
+            # Cũ: `hits or _POLICIES` — không khớp vẫn trả TOÀN BỘ quy định như thể liên quan
+            # → agent trình bày policy không liên quan như câu trả lời (bịa). Nay rỗng → is_error.
+            if not hits:
+                return ToolResult(
+                    content=(
+                        f"Không tìm thấy quy định nào khớp '{args.get('query', '')}'. "
+                        "KHÔNG có quy định phù hợp — đừng bịa; nói thẳng là chưa có quy định về việc này."
+                    ),
+                    is_error=True,
+                )
+            return json.dumps({"results": hits}, ensure_ascii=False)
         raise ValueError(f"tool không tồn tại: {tool_name}")
