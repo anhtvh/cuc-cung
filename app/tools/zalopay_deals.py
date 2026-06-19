@@ -20,9 +20,11 @@ Tools:
 
 import json
 import logging
+import re
 import unicodedata
 from datetime import datetime
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -52,6 +54,8 @@ _CATEGORIES: dict[int, dict[str, str]] = {
 _FETCH_LIMIT = 50
 _DEFAULT_OUTPUT = 12
 _MAX_DESC_CHARS = 280
+_MAX_CONTENT_CHARS = 6000  # nội dung chi tiết 1 KM ~5-6KB plain text — đủ để hướng dẫn từng bước
+_NEXT_DATA_RE = re.compile(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', re.S)
 
 
 def _norm(s: str) -> str:
@@ -125,12 +129,32 @@ class ZalopayDealsProvider:
                         },
                     },
                 },
-            )
+            ),
+            ToolDef(
+                name="get_deal",
+                description=(
+                    "Đọc NỘI DUNG ĐẦY ĐỦ của một khuyến mãi cụ thể (cách dùng, điều kiện, các bước "
+                    "nhận ưu đãi, thời gian áp dụng). Dùng khi user hỏi chi tiết/cách dùng 1 KM SAU khi "
+                    "đã có danh sách — truyền NGUYÊN `url` của KM đó lấy từ kết quả list_deals."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "url": {
+                            "type": "string",
+                            "description": "URL bài KM (lấy nguyên từ trường `url` của list_deals).",
+                        }
+                    },
+                    "required": ["url"],
+                },
+            ),
         ]
 
     def call(self, tool_name: str, args: dict[str, Any]) -> "str | ToolResult":
         if tool_name == "list_deals":
             return self._list_deals(args)
+        if tool_name == "get_deal":
+            return self._get_deal(args)
         raise ValueError(f"tool không tồn tại: {tool_name}")
 
     def _list_deals(self, args: dict) -> "str | ToolResult":
@@ -224,6 +248,66 @@ class ZalopayDealsProvider:
                 "count": len(deals[:out_limit]),
                 "deals": deals[:out_limit],
                 "source": f"{_BASE}/khuyen-mai",
+            },
+            ensure_ascii=False,
+        )
+
+    def _get_deal(self, args: dict) -> "str | ToolResult":
+        url = str(args.get("url", "")).strip()
+        # Giới hạn phạm vi: chỉ bài trên zalopay.vn (chống fetch bừa + đúng nguồn KM).
+        if urlparse(url).hostname not in ("zalopay.vn", "www.zalopay.vn"):
+            return ToolResult(
+                content="url phải là bài khuyến mãi zalopay.vn (lấy từ list_deals).",
+                is_error=True,
+            )
+        try:
+            resp = safe_get(
+                url, timeout=10,
+                headers={"User-Agent": _UA, "Referer": f"{_BASE}/khuyen-mai"},
+            )
+            resp.raise_for_status()
+        except SsrfBlocked as e:
+            return ToolResult(content=str(e), is_error=True)
+        except httpx.TimeoutException:
+            return ToolResult(content=f"Timeout khi đọc bài KM ({url}, >10s).", is_error=True)
+        except httpx.HTTPStatusError as e:
+            return ToolResult(
+                content=f"Bài KM trả HTTP {e.response.status_code} ({url}). Có thể link hỏng — KHÔNG bịa nội dung.",
+                is_error=True,
+            )
+        except Exception as e:  # noqa: BLE001 — mọi lỗi còn lại đều trả model
+            log.warning("get_deal lỗi %s: %s", url, e)
+            return ToolResult(content=f"Không đọc được bài KM ({url}): {e}", is_error=True)
+
+        # Nội dung bài nằm trong __NEXT_DATA__ (Next.js server-render), không phải DOM hiển thị.
+        m = _NEXT_DATA_RE.search(resp.text)
+        if not m:
+            return ToolResult(
+                content=f"Không tìm thấy dữ liệu bài ({url}) — cấu trúc trang có thể đã đổi. KHÔNG bịa.",
+                is_error=True,
+            )
+        try:
+            pp = json.loads(m.group(1))["props"]["pageProps"]
+        except (json.JSONDecodeError, KeyError) as e:
+            return ToolResult(content=f"Dữ liệu bài KM không đọc được ({url}): {e}", is_error=True)
+
+        from bs4 import BeautifulSoup  # lazy import (giống web_search) — tránh phụ thuộc lúc load
+
+        content_html = pp.get("content") or ""
+        text = re.sub(r"\n{3,}", "\n\n", BeautifulSoup(content_html, "html.parser").get_text("\n")).strip()
+        if not text:
+            return ToolResult(
+                content=f"Bài KM ({url}) không có nội dung chi tiết. KHÔNG bịa — báo user xem trực tiếp trên link.",
+                is_error=True,
+            )
+        return json.dumps(
+            {
+                "title": pp.get("title"),
+                "url": url,
+                "valid_from": _iso_date(pp.get("start")),
+                "valid_until": _iso_date(pp.get("end")),
+                "content": text[:_MAX_CONTENT_CHARS],
+                "truncated": len(text) > _MAX_CONTENT_CHARS,
             },
             ensure_ascii=False,
         )

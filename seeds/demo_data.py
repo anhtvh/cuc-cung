@@ -65,6 +65,14 @@ link bài viết, và **sắp KM sắp hết hạn lên đầu**. KHÔNG search/
 
 _Xem toàn bộ tại [zalopay.vn/khuyen-mai](https://zalopay.vn/khuyen-mai)_
 
+## Bước 5 — Trả lời chi tiết / cách dùng 1 KM cụ thể (khi user hỏi tiếp)
+Khi user hỏi cách dùng / điều kiện / chi tiết một KM đã liệt kê → gọi `zalopay-deals__get_deal`
+với NGUYÊN `url` của KM đó (lấy từ kết quả `list_deals`). Tool trả `content` = hướng dẫn đầy đủ
+(đối tượng áp dụng, điều kiện, **các bước nhận ưu đãi**, thời gian) → trả lời theo `content`,
+giữ nguyên các bước, không rút gọn quá mức.
+- User hỏi về KM CHƯA có trong danh sách → gọi `list_deals` trước để lấy đúng `url`, rồi `get_deal`.
+- `get_deal` trả `is_error` (link hỏng / không có nội dung) → **KHÔNG bịa**; báo thật và đưa link để user tự xem.
+
 ## Lưu ý bắt buộc
 - **CHỈ KM từ `list_deals`** (nguồn zalopay.vn). KHÔNG độn deal ví/app/sàn khác (Momo, ShopeePay...),
   KHÔNG lấy KM từ bộ nhớ — kể cả khi user hỏi "deal nào ngon nhất" chung chung.
