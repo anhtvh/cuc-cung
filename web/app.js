@@ -1659,7 +1659,7 @@ $("#chat-input").addEventListener("keydown", (e) => {
     }
     return;
   }
-  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitChat(); }
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); submitChat(); }
 });
 
 /* ─── File upload (multi) ───────────────────────────────── */
