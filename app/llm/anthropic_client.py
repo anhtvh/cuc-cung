@@ -32,10 +32,14 @@ log = logging.getLogger(__name__)
 _SLA_DEFAULT = object()
 
 # Nudge ép model tổng hợp khi chạm SLA — không cho tra cứu thêm.
+# #5: nếu CHƯA thu được dữ liệu nào (tool lỗi/rỗng), ép "trả lời ngay" sẽ đẩy model bịa từ
+# trí nhớ. Nói rõ: chưa có dữ liệu thì nói thẳng chưa kịp tra, KHÔNG bịa.
 _SLA_NUDGE = (
     "[Hệ thống — đã chạm giới hạn thời gian xử lý (SLA ~1 phút)]\n"
-    "DỪNG tra cứu/tìm kiếm thêm. Hãy trả lời NGAY dựa trên dữ liệu đã thu thập được. "
-    "Nêu rõ ở cuối: phần này được phân tích trên dữ liệu hiện có, có thể chưa đầy đủ."
+    "DỪNG tra cứu/tìm kiếm thêm. Trả lời NGAY dựa trên dữ liệu ĐÃ thu thập được, nêu rõ ở "
+    "cuối là phân tích trên dữ liệu hiện có, có thể chưa đầy đủ.\n"
+    "Nếu CHƯA thu được dữ liệu thật nào (tool lỗi/không có kết quả): nói THẲNG là chưa tra "
+    "cứu kịp / chưa tìm được thông tin — TUYỆT ĐỐI không bịa số liệu, sự kiện hay chi tiết."
 )
 
 # Câu trả lời an toàn khi 1 request tới MaaS bị timeout giữa chừng.
