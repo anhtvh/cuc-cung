@@ -42,6 +42,7 @@ from app.tools.mock.company_docs import CompanyDocsProvider
 from app.tools.mock.contract_db import ContractDbProvider
 from app.tools.mock.gitlab import GitlabProvider
 from app.tools.mock.web_search import WebSearchProvider
+from app.tools.zalopay_faq import ZalopayFaqProvider
 from seeds.demo_data import ensure_seed
 
 
@@ -189,6 +190,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         PartnerIntegrationProvider(),
         FileExportProvider(),  # plugin xuất file CSV/Excel/Word — connector chọn được (Flow 5)
         GitlabProvider(),  # mock GitLab cho agent MrReviewer (Flow 5)
+        ZalopayFaqProvider(),  # gọi thẳng FAQ JSON API zalopay (Em Bé CS) — chính xác hơn fetch HTML
         web_search_provider,
     ]
     catalog = ToolCatalog(providers, tool_timeout_seconds=settings.tool_timeout_seconds)

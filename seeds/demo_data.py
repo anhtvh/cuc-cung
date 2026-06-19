@@ -167,75 +167,70 @@ _ZLP_FAQ_SKILL = Skill(
         "bảo mật hoặc bất kỳ nghiệp vụ nào của zalopay."
     ),
     content="""\
-# Quy trình giải đáp thắc mắc zalopay
+# Quy trình giải đáp thắc mắc zalopay (FAQ JSON API)
 
-## Cấu trúc URL trang FAQ zalopay
-- Trang chủ FAQ: https://zalopay.vn/hoi-dap
-- Bài viết cụ thể: https://zalopay.vn/hoi-dap/[category]/[subcategory]/[slug]
+Trả lời câu hỏi nghiệp vụ zalopay bằng cách gọi THẲNG FAQ API chính thức (server `zalopay-faq`)
+— dữ liệu cấu trúc, kèm SẴN nội dung câu trả lời. KHÔNG search/fetch HTML (trang hoi-dap render
+động, HTML thô rỗng). Điều hướng theo TÊN: danh mục → thư mục → bài viết.
 
-Các category chính và mapping chủ đề:
-- `quan-ly-tai-khoan` — đăng ký, khoá/mở tài khoản, mật khẩu, định danh, điểm tin cậy
-- `nap-tien-rut-tien` — nạp tiền, rút tiền, hoàn tiền, giao dịch đang xử lý
-- `chuyen-tien-nhan-tien` — chuyển/nhận tiền, nhắc chuyển, nhận tiền quốc tế
-- `an-toan-bao-mat` — bảo mật tài khoản, cảnh báo lừa đảo, biện pháp bảo vệ
-- `lien-ket-ngan-hang` — liên kết/huỷ liên kết ngân hàng, sửa lỗi liên kết
-- `thanh-toan-dich-vu` — hoá đơn điện/nước/internet, vé tàu/máy bay, học phí, bảo hiểm
-- `dich-vu-tai-chinh` — vay tiền, trả góp, tiết kiệm, chứng khoán, số dư sinh lời
-- `khuyen-mai` — khiếu nại KM, thông tin chung về khuyến mãi zalopay
+## Bước 1 — Chọn danh mục
+Gọi `zalopay-faq__list_categories` → danh sách `{id, name}`. Chọn danh mục khớp ý câu hỏi nhất, lấy `id`.
 
-## Bước 1 — Tìm URL bài viết cụ thể
-Gọi `web-search__search` với query: `site:zalopay.vn/hoi-dap [từ khoá câu hỏi]`
+**Gợi ý chọn nhanh (chủ đề → danh mục)** — chỉ để đoán đúng ngay vòng 1, tiết kiệm bước dò:
+| Câu hỏi về... | Danh mục |
+|---|---|
+| đăng ký/đăng nhập, khoá-mở tài khoản, định danh/eKYC, đổi SĐT, điểm tin cậy, đóng tài khoản, **mật khẩu thanh toán** | Quản lý Tài khoản |
+| nạp tiền, rút tiền, hoàn tiền, giao dịch đang xử lý | Nạp tiền/Rút tiền |
+| chuyển tiền, nhận tiền, nhắc chuyển | Chuyển tiền/Nhận tiền |
+| thanh toán hoá đơn (điện/nước/internet), nạp điện thoại, vé, học phí | Thanh toán dịch vụ |
+| lừa đảo, OTP, sinh trắc học, mất an toàn | An toàn và bảo mật / Bảo vệ tài khoản |
+| liên kết/huỷ liên kết ngân hàng, lỗi liên kết thẻ | Liên kết ngân hàng |
+| mã giảm giá, ưu đãi, khuyến mãi | Khuyến mãi |
+| khiếu nại, phản ánh dịch vụ | Khiếu nại dịch vụ |
+| vay, trả góp, tiết kiệm, đầu tư, số dư sinh lời | Dịch vụ tài chính |
+| bảo hiểm | Bảo Hiểm |
+| quét mã QR, QR quốc tế | QR đa năng / Quét QR Quốc Tế |
+| thanh toán/trừ tiền tự động (autopay) | Dịch vụ thanh toán tự động |
 
-⚠️ **NGUỒN URL DUY NHẤT là kết quả search.** TUYỆT ĐỐI KHÔNG tự ghép/đoán URL bằng cách \
-slugify tiêu đề — URL tự bịa rất dễ 404 và dẫn tới trích nguồn sai (báo nguồn nhưng link không \
-tồn tại). Chỉ được fetch URL có thật trong kết quả search.
+⚠️ Đây CHỈ là gợi ý. Tên/`id` THẬT luôn lấy từ kết quả `list_categories` — **không hardcode id**;
+tên trong kết quả là chuẩn, nếu không khớp gợi ý thì đọc danh sách đầy đủ rồi tự chọn.
 
-Phân biệt 2 loại URL trong kết quả:
-- **URL bài viết** (dùng để trả lời): có 4 segment trở lên — `zalopay.vn/hoi-dap/[cat]/[sub]/[slug]`
-  Ví dụ: `zalopay.vn/hoi-dap/nap-tien-rut-tien/rut-tien/tai-sao-toi-khong-the-rut-tien`
-- **URL category** (chỉ tham khảo, KHÔNG trích làm nguồn): 2–3 segment — `zalopay.vn/hoi-dap/[cat]/[sub]`
+## Bước 2 — Chọn thư mục
+Gọi `zalopay-faq__list_folders` với `category_id` vừa chọn → `{id, name}` các thư mục con.
+Chọn thư mục khớp nhất, lấy `id`.
 
-Chọn URL bài viết (≥4 segment) khớp nhất câu hỏi để sang Bước 2.
-Nếu kết quả CHỈ có URL category (không có bài viết ≥4 segment nào):
-1. Thử search lại 1 lần với từ khoá khác (đồng nghĩa / cụ thể hơn) để lộ URL bài viết.
-2. Vẫn không ra URL bài viết thật → KHÔNG đoán URL; sang Fallback (đưa link category thật + hotline).
+## Bước 3 — Đọc bài & trả lời
+Gọi `zalopay-faq__list_articles` với `folder_id` → mỗi bài gồm `title` + `answer`
+(plain text câu trả lời) + `updated_at`. Đọc bài có `title` khớp câu hỏi nhất, trả lời theo `answer`.
+Không cần fetch trang web — answer đã là nội dung đầy đủ.
 
-## Bước 2 — Fetch & VERIFY nội dung câu trả lời
-Gọi `web-search__fetch` với URL bài viết (≥4 segment).
-Nội dung trả về có phần navigation dài ở đầu — câu trả lời thật nằm SAU đoạn nav,
-bắt đầu bằng tiêu đề câu hỏi (xuất hiện lần 2). Đọc từ đó trở đi.
+Không có bài khớp trong thư mục → thử thư mục khác (Bước 2) hoặc danh mục khác (Bước 1),
+tối đa ~2 lần, rồi mới sang Fallback.
 
-**Verify bắt buộc trước khi trả lời:**
-- `fetch` trả về is_error (4xx/timeout) → URL này KHÔNG dùng được, không trích làm nguồn; \
-thử URL bài viết khác trong kết quả search, hoặc sang Fallback.
-- Fetch thành công nhưng nội dung KHÔNG chứa câu trả lời cho đúng câu hỏi → đừng gán đại; \
-search lại từ khoá khác hoặc sang Fallback. Chỉ trả lời từ nội dung ĐÃ fetch thấy thật.
+## VERIFY bắt buộc (chống bịa)
+- Tool trả `is_error` → KHÔNG dùng, KHÔNG bịa; thử id khác hoặc sang Fallback.
+- Chỉ trả lời từ `answer` ĐÃ đọc thấy thật cho ĐÚNG câu hỏi. Không có bài khớp → đừng gán đại;
+  TUYỆT ĐỐI không trả lời từ trí nhớ.
 
-## Bước 3 — Trình bày kết quả
-Format output bắt buộc — LUÔN tóm tắt nội dung, KHÔNG yêu cầu user tự vào xem:
+## Trình bày kết quả — LUÔN tóm tắt, không bắt user tự tra
+**[Tiêu đề câu hỏi / title bài]**
 
-**[Tiêu đề câu hỏi]**
+[Câu trả lời đầy đủ từ `answer` — giữ nguyên từng bước hướng dẫn, không rút gọn]
 
-[Câu trả lời đầy đủ — giữ nguyên từng bước hướng dẫn, không rút gọn]
+_Nguồn: Trung tâm trợ giúp Zalopay (https://zalopay.vn/hoi-dap)_
 
-_Nguồn: [URL bài viết zalopay.vn]_ — **chỉ ghi URL đã fetch THÀNH CÔNG ở Bước 2 và nội dung \
-trang đúng là câu trả lời này**. KHÔNG ghi URL tự đoán/chưa fetch. Chưa verify được nguồn → \
-dùng Fallback thay vì bịa nguồn.
-
-Nếu trong nội dung fetch có "Câu hỏi liên quan" → liệt kê 2–3 câu cuối để user tham khảo.
+Nếu bài có `contact_link` và phù hợp → gợi ý thêm kênh liên hệ CSKH.
 
 ## Fallback — Chỉ dùng khi đã thử hết các bước trên
-1. Fetch bài viết nhưng không có câu trả lời trong nội dung → thử search lại với từ khoá khác
-2. Sau 2 lần search vẫn không ra → báo thật + link danh mục gần nhất trên zalopay.vn/hoi-dap
-3. Chỉ đưa hotline khi thực sự không tìm được thông tin nào:
+1. Không tìm được danh mục/thư mục/bài khớp sau ~2 lần thử → báo thật là chưa có thông tin trong
+   FAQ, đưa link https://zalopay.vn/hoi-dap để user tự tra.
+2. Chỉ đưa hotline khi thực sự bí:
    → Hotline Zalopay: **1900 545 436** (1.000đ/phút) | Email: hotro@zalopay.vn
 
 ## Lưu ý bắt buộc
-- KHÔNG tự bịa câu trả lời khi chưa fetch được nguồn chính thức
-- **KHÔNG tự ghép/đoán URL** (slugify tiêu đề) — chỉ dùng URL có thật trong kết quả search, \
-chỉ trích nguồn URL đã fetch thành công
-- KHÔNG cam kết thông tin còn hiệu lực — luôn kèm link để user tự verify
-- **CHỈ Zalopay:** câu hỏi không liên quan đến zalopay → escalate, không tự trả lời
+- KHÔNG bịa câu trả lời khi tool lỗi / không có bài khớp.
+- KHÔNG cam kết thông tin còn hiệu lực — FAQ có thể cập nhật; khuyến khích user verify tại zalopay.vn/hoi-dap.
+- **CHỈ Zalopay:** câu hỏi không liên quan đến zalopay → escalate, không tự trả lời.
 """,
     domain="support",
     created_by="admin",
@@ -265,11 +260,14 @@ ngoài phạm vi zalopay
 **Format output:** Theo đúng quy trình trong skill — câu trả lời đầy đủ từ nguồn \
 chính thức, kèm link gốc và câu hỏi liên quan. Rõ ràng từng bước, dễ làm theo.
 
-**Tuyệt đối không:** bịa câu trả lời khi chưa fetch được nguồn; **tự ghép/đoán URL** rồi trích \
-làm nguồn (chỉ dùng URL có thật trong kết quả search và đã fetch thành công); cam kết thông tin \
-mà không verify từ zalopay.vn; trả lời câu hỏi ngoài Zalopay; bỏ qua câu hỏi mà không tìm kiếm.\
+**Tuyệt đối không:** bịa câu trả lời khi tool FAQ lỗi / không có bài khớp; trả lời từ trí nhớ \
+thay vì từ nội dung FAQ API đã đọc; cam kết thông tin mà không có trong FAQ chính thức; \
+trả lời câu hỏi ngoài Zalopay; bỏ qua câu hỏi mà không tra cứu FAQ.\
 """,
-    connectors=["web-search"],
+    # Cũ: connectors=["web-search"] — search site:zalopay.vn/hoi-dap rồi fetch HTML. Trang FAQ là
+    # Next.js render động nên fetch HTML kém ổn định; chuyển sang gọi thẳng FAQ JSON API (zalopay-faq)
+    # cho dữ liệu cấu trúc, chính xác hơn.
+    connectors=["zalopay-faq"],
     domain="support",
     created_by="admin",
 )
