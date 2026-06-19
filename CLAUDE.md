@@ -72,6 +72,8 @@ app/
     catalog.py           — registry tool → provider
     mock/contract_db.py, company_docs.py — mock MCP server demo
     mcp_gateway.py       — IamTokenProvider + McpGatewayProvider; gateway agent-hub-gw ACTIVE trên AgentBase
+    zalopay_faq.py       — provider `zalopay-faq` (Em Bé CS): gọi thẳng FAQ JSON API support.zalopay.vn (list_categories/list_folders/list_articles)
+    zalopay_deals.py     — provider `zalopay-deals` (Em Bé Săn Deal): list_deals (KM còn hạn) + get_deal (nội dung 1 KM) qua API zalopay.vn
   api/
     chat.py              — POST /chat SSE
     review.py            — admin approve/reject
@@ -133,3 +135,6 @@ Python 3.14 local (target code 3.12+), Docker `python:3.12-slim`.
 6. `master_system.md` là nguồn sự thật của master prompt — seed tự sync vào DB khi khởi động, không sửa DB thủ công.
 7. **MCP Gateway route**: gọi `POST {gateway_endpoint}/{target_name}` (không phải root). `McpGatewayProvider._rpc_url()` đã xử lý tự động. Gateway hiện `agent-hub-gw`, target `websearch`. Sau deploy: PATCH target endpoint về `{deployed_app_url}/mcp` rồi set `MCP_GATEWAY_ENDPOINT`.
 8. **Sau deploy**: chạy 2 lệnh: (1) PATCH gateway target URL, (2) set `MCP_GATEWAY_ENDPOINT=https://gw-agent-hub-gw-111745.agentbase-gateway.aiplatform.vngcloud.vn` trong env container → app tự dùng gateway thay DuckDuckGo local.
+9. **API nội bộ zalopay.vn (FAQ + Deals)** — KHÔNG phải API công bố chính thức, là internal API của web zalopay.vn, public (không auth) nhưng có thể đổi bất kỳ lúc nào → provider trả `is_error` (không bịa) khi hỏng, cần cập nhật khi đổi. Hai "em bé" gọi thẳng API này thay vì cào HTML (trang FAQ/khuyến mãi đều là Next.js SPA, HTML thô rỗng):
+   - **FAQ** (`zalopay-faq`): base `https://support.zalopay.vn` — `/faq/api/get-category-list`, `/faq/api/get-folder-list?categoryId=`, `/faq/api/get-article-list?folderId=` (get-article-list trả luôn nội dung; không có endpoint search/detail → điều hướng theo tên).
+   - **Deals** (`zalopay-deals`): `https://zalopay.vn/api/get-new-by-category-for-promotion?category_id=6&type_status=1&limit=50` (proxy same-origin, base CMS server-only). LUÔN query danh mục cha `category_id=6` rồi lọc còn hạn `start ≤ time_now ≤ end` (feed sub-category xếp bài hết hạn lên đầu nên miss KM active); lọc danh mục con client-side qua `news_sub_category.id`. **`limit > 50` → HTTP 500**. URL bài KM = `zalopay.vn/{slug}-{id}`. Nội dung chi tiết KM (`get_deal`) nằm trong `__NEXT_DATA__` của trang bài (field `content`), không có trong response list.
