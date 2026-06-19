@@ -29,93 +29,49 @@ _ZALOPAY_SKILL = Skill(
         "hoặc tìm ưu đãi phù hợp nhu cầu cụ thể."
     ),
     content="""\
-# Quy trình tìm & đề xuất khuyến mãi Zalopay
+# Quy trình tìm & đề xuất khuyến mãi Zalopay (Deals API)
 
-## Bước 1 — Tìm dữ liệu KM realtime
-Trang zalopay.vn/khuyen-mai dùng JavaScript nên KHÔNG fetch trực tiếp được — \
-bỏ qua bước fetch URL đó, đi thẳng vào search.
+Lấy KM realtime bằng MỘT tool gọi THẲNG API chính thức: `zalopay-deals__list_deals`.
+Tool đã tự: lấy danh sách KM, **LỌC bỏ KM hết hạn** (giữ KM có start ≤ nay ≤ end), dựng sẵn
+link bài viết, và **sắp KM sắp hết hạn lên đầu**. KHÔNG search/fetch HTML, KHÔNG dùng KM từ bộ nhớ.
 
-**Ngân sách tool (bắt buộc tuân thủ — tránh cạn lượt rồi bỏ lửng câu trả lời):**
-tối đa **6 lượt gọi tool** cho cả lần trả lời: 1 lượt search (+ tối đa 1 lượt search lại nếu \
-kết quả quá ít) và **tối đa 4 lượt fetch để VERIFY từng KM sẽ hiển thị**. \
-Hết ngân sách thì DỪNG và trả lời ngay với CÁC KM ĐÃ VERIFY được — không gọi thêm tool, \
-KHÔNG thêm KM chưa verify vào bảng.
+## Bước 1 — Lấy deal
+- Hỏi chung ("đang có deal gì", "KM ngon nhất hôm nay") → gọi `list_deals` (bỏ trống `category`) lấy tất cả.
+- Hỏi theo nhu cầu → truyền `category`: `an-uong`, `mua-sam`, `du-lich`, `hoa-don`, `dien-thoai`,
+  `giai-tri`, `tai-chinh`, `dac-biet` (hoặc tên tiếng Việt tương ứng).
+- Tool trả: `{deals:[{title, category, url, valid_from, valid_until, description}], count, source}`.
 
-### 1a. Search (1 lượt, num_results = 8)
-Gọi `web-search__search` với query: `site:zalopay.vn/khuyen-mai`
-- BẮT BUỘC dùng `site:zalopay.vn` — chỉ lấy kết quả từ domain zalopay.vn, bỏ qua mọi trang khác
-- KHÔNG thêm năm (2025/2026) vào query — năm trong query dễ lọc nhầm KM cũ
-- KHÔNG dùng thông tin từ bộ nhớ hay cuộc trò chuyện trước — KM thay đổi hằng ngày
-- Nếu kết quả ít: thử MỘT query khác `site:zalopay.vn ưu đãi` hoặc `site:zalopay.vn giảm giá`
+## Bước 2 — Xử lý kết quả (chống bịa)
+- Tool trả `is_error` (lỗi mạng / không còn KM nào còn hạn) → **KHÔNG bịa**; báo thật là chưa có
+  KM còn hiệu lực, đưa link zalopay.vn/khuyen-mai để user tự xem. Nếu lọc theo `category` mà rỗng
+  → gọi lại 1 lần BỎ `category` để xem toàn bộ trước khi kết luận.
+- Mỗi deal trong `deals` ĐÃ còn hạn và link ĐÃ dựng từ API → dùng trực tiếp, KHÔNG cần verify thêm.
 
-### 1b. Xếp hạng sơ bộ TỪ SNIPPET — KHÔNG fetch tất cả
-Snippet trong kết quả search đã có tên KM + giá trị (% / số tiền) → đủ để lọc và \
-xếp hạng sơ bộ ngay, KHÔNG cần fetch từng trang. Lọc trước:
-- Chỉ giữ URL bắt đầu bằng `https://zalopay.vn` — URL khác (didongviet, bachhoaxanh...) bỏ luôn, KHÔNG fetch.
-- Bỏ URL không phải bài KM cụ thể (trang chủ/danh mục chung).
-
-### 1c. Fetch để VERIFY — BẮT BUỘC cho MỌI KM sẽ hiển thị
-Chọn tối đa **3-4 URL zalopay.vn hứa hẹn nhất** (deal ngon nhất / sắp hết hạn) → \
-gọi `web-search__fetch` từng URL để xác minh và **lưu lại đúng URL đó** đính kèm output.
-**Quy tắc cứng (chống link chết):** chỉ KM mà `fetch` trả về THÀNH CÔNG (không is_error) \
-VÀ nội dung trang CÒN thông tin KM mới được đưa vào bảng. KM lấy link thẳng từ snippet mà \
-CHƯA fetch verify → **KHÔNG được hiển thị** (link snippet hay là bản cache đã 404/đổi → bấm \
-vào không có deal). Thà ÍT KM mà link chắc chắn sống còn hơn nhiều KM link chết.
-
-## Bước 2 — Trích xuất thông tin mỗi KM
-Với từng khuyến mãi (lấy từ snippet, bổ sung chi tiết từ trang đã fetch nếu có), ghi nhận:
-- **Tên KM**: mô tả ngắn gọn
-- **Giá trị**: % giảm hoặc số tiền giảm tối đa (VD: giảm 50%, tối đa 30.000đ)
-- **Điều kiện**: hoá đơn tối thiểu, đối tác/merchant, phương thức thanh toán, số lần dùng
-- **Hạn sử dụng**: ngày kết thúc cụ thể của KM. CẢNH BÁO: ngày dạng "Tháng M/YYYY" \
-hay ngày đăng trên trang/snippet thường là NGÀY ĐĂNG BÀI, KHÔNG phải hạn KM — \
-đừng suy ra hạn dùng từ đó. Không thấy hạn kết thúc rõ ràng → ghi "không rõ hạn".
-- **Link**: URL bài viết/trang KM cụ thể **đã fetch verify thành công ở Bước 1c** — BẮT BUỘC có, KHÔNG dùng link snippet chưa verify
-
-## Bước 2.5 — Lọc KM hết hạn & link chết (BẮT BUỘC, làm trước khi xếp hạng)
-Đầu system prompt có "hôm nay là {ngày}" — dùng mốc đó để lọc:
-- **Hết hạn:** nếu hạn dùng xác định được và đã TRƯỚC hôm nay → LOẠI khỏi bảng, \
-KHÔNG đưa vào "Tốt nhất hôm nay". Không bao giờ liệt kê KM có hạn đã qua.
-- **Link chết:** mọi KM hiển thị đều đã fetch ở Bước 1c — nếu trang trả lỗi (HTTP 4xx/timeout) \
-hoặc nội dung không còn thông tin KM → coi như link chết, LOẠI KM đó (đừng show link bấm vào không có deal).
-- **Không rõ hạn:** giữ lại nhưng ghi "không rõ hạn" và KHÔNG xếp vào hạng "sắp hết hạn"; \
-nhắc user kiểm tra lại trên app Zalopay.
-- Sau khi lọc mà không còn KM nào hợp lệ → nói thật "chưa tìm thấy KM còn hiệu lực hôm nay", KHÔNG bịa.
-
-## Bước 3 — Chấm điểm & xếp hạng
-Chỉ xếp hạng các KM ĐÃ QUA lọc ở Bước 2.5 (còn hiệu lực). Ưu tiên theo thứ tự:
-1. KM **sắp hết hạn nhưng VẪN còn hiệu lực** (hạn ≥ hôm nay, urgency cao — user cần dùng ngay)
-2. **Giá trị tiết kiệm tuyệt đối cao nhất** (số tiền giảm được, không phải % thuần)
-3. **Điều kiện dễ đáp ứng** (hoá đơn tối thiểu thấp, không giới hạn merchant)
-4. **Phạm vi rộng** (nhiều merchant, nhiều danh mục, không giới hạn số lần)
+## Bước 3 — Xếp hạng (deals đã được sort theo hạn gần nhất)
+Ưu tiên: (1) **sắp hết hạn** (`valid_until` gần — urgency, user cần dùng ngay);
+(2) **giá trị tiết kiệm tuyệt đối cao** (số tiền giảm, không phải % thuần);
+(3) điều kiện dễ; (4) phạm vi rộng. Đọc `title`/`description` để ước lượng giá trị & điều kiện.
 
 ## Bước 4 — Format output
-Trình bày theo cấu trúc sau (bắt buộc):
-
 **Tốt nhất hôm nay:** [Tên KM] — [lý do 1 câu ngắn]
 
-| # | Khuyến mãi | Giá trị | Điều kiện | Hạn dùng | Link |
-|---|---|---|---|---|---|
-| 1 | ... | ... | ... | ... | [Xem deal](...) |
-| 2 | ... | ... | ... | ... | [Xem deal](...) |
+| # | Khuyến mãi | Giá trị | Hạn dùng | Link |
+|---|---|---|---|---|
+| 1 | ... | ... | {valid_until} | [Xem deal](url) |
+| 2 | ... | ... | {valid_until} | [Xem deal](url) |
 
-Cột Link: dùng URL đã fetch verify thành công ở Bước 1c — KHÔNG để trống, KHÔNG dùng link snippet chưa verify, KHÔNG dùng zalopay.vn/khuyen-mai chung chung.
-
-**Gợi ý theo nhu cầu:**
-- Ăn uống/F&B: [KM phù hợp nhất]
-- Mua sắm online: [KM phù hợp nhất]
-- Thanh toán bill/nạp tiền: [KM phù hợp nhất]
+**Gợi ý theo nhu cầu** (dựa cột `category` của từng deal):
+- Ăn uống / Mua sắm / Hóa đơn / Du lịch... : [KM phù hợp nhất trong nhóm đó]
 
 _Xem toàn bộ tại [zalopay.vn/khuyen-mai](https://zalopay.vn/khuyen-mai)_
 
 ## Lưu ý bắt buộc
-- **CHỈ Zalopay:** mọi KM trong bảng PHẢI là URL từ zalopay.vn. Loại bỏ HOÀN TOÀN kết quả từ \
-didongviet, bachhoaxanh, thegioididong hay bất kỳ trang thứ 3 nào — kể cả khi snippet hứa hẹn hơn.
-- **Cấm độn deal ngoài:** dù user có hỏi "deal nào ngon nhất" chung chung, KHÔNG bao giờ đưa KM \
-của ví/app/sàn khác vào để "cho phong phú". Không có KM zalopay.vn → nói thật là chưa tìm thấy.
-- Mỗi link trong bảng PHẢI đã fetch verify thành công ở Bước 1c — không show link chưa kiểm chứng.
+- **CHỈ KM từ `list_deals`** (nguồn zalopay.vn). KHÔNG độn deal ví/app/sàn khác (Momo, ShopeePay...),
+  KHÔNG lấy KM từ bộ nhớ — kể cả khi user hỏi "deal nào ngon nhất" chung chung.
+- **Link** lấy NGUYÊN `url` từ tool — không tự sửa/ghép/rút gọn.
+- **Hạn dùng** = `valid_until` từ tool; KHÔNG suy diễn hạn từ ngày đăng.
 - Không cam kết KM còn hiệu lực — nhắc user kiểm tra lại trên app Zalopay trước khi dùng.
-- Viết đúng tên thương hiệu: **Zalopay** (không phải zalopay).
+- Viết đúng tên thương hiệu: **Zalopay**.
 """,
     domain="marketing",
     created_by="admin",
@@ -148,12 +104,15 @@ có KM zalopay.vn thì nói thật, KHÔNG lấy nguồn ngoài cho "phong phú"
 **Format output:** Bảng tóm tắt + link deal cho từng KM + highlight tốt nhất + gợi ý \
 theo nhu cầu. Ngắn gọn, dễ đọc trên mobile. Luôn viết đúng **Zalopay** (không phải zalopay).
 
-**Tuyệt đối không:** bịa khuyến mãi khi không tìm được nguồn; đưa KM của ví/app/trang ngoài \
-Zalopay vào bảng; **show link chưa fetch verify** (chỉ link đã fetch thành công ở Bước 1c mới \
-được hiển thị — chống "bấm vào không có deal"); để trống cột link; dùng thông tin KM từ bộ nhớ \
-cũ thay vì tìm kiếm mới mỗi lần; **liệt kê KM đã hết hạn** (so hạn dùng với "hôm nay" ở đầu prompt).\
+**Tuyệt đối không:** bịa khuyến mãi khi tool không trả KM nào; đưa KM của ví/app/trang ngoài \
+Zalopay vào bảng; tự sửa/ghép link (chỉ dùng `url` nguyên từ tool); để trống cột link; \
+dùng thông tin KM từ bộ nhớ cũ thay vì gọi `list_deals` mới mỗi lần; **liệt kê KM đã hết hạn** \
+(tool đã lọc còn hạn — không tự thêm KM ngoài kết quả tool).\
 """,
-    connectors=["web-search"],
+    # Cũ: connectors=["web-search"] — search site:zalopay.vn/khuyen-mai rồi fetch HTML để verify.
+    # Trang /khuyen-mai là SPA rỗng nên cách đó bấp bênh; chuyển sang gọi thẳng API list KM
+    # (zalopay-deals) — realtime, đã lọc còn hạn, link dựng sẵn.
+    connectors=["zalopay-deals"],
     domain="marketing",
     created_by="admin",
 )
